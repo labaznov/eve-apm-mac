@@ -32,7 +32,8 @@ openssl pkcs12 -export -name "$NAME" \
 	-out "$work/identity.p12" -passout pass:eveapm \
 	-keypbe PBE-SHA1-3DES -certpbe PBE-SHA1-3DES -macalg sha1
 
-# -A lets codesign use the key without a keychain prompt on every build.
+# -A puts every application on the key's access list. The keychain still asks
+# once for authorisation, which "Always Allow" settles for good.
 security import "$work/identity.p12" \
 	-k "$HOME/Library/Keychains/login.keychain-db" -P eveapm -A
 
