@@ -33,6 +33,7 @@ final class AppModel: ObservableObject {
             .sink { [weak self] hotkeys in self?.hotkeys.apply(hotkeys) }
             .store(in: &cancellables)
 
+        Log.info("starting with screen recording \(hasScreenRecording), accessibility \(hasAccessibility)")
         controller.start()
         registry.start()
         watchPermissions()

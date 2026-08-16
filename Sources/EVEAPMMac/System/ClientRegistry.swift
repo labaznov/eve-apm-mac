@@ -18,6 +18,7 @@ final class ClientRegistry: ObservableObject {
     private var pollTimer: Timer?
     private var observers: [NSObjectProtocol] = []
     private var isRefreshing = false
+    private var deniedSince: Date?
 
     /// Windows narrower than this are EVE's own dialogs, not a client.
     private static let minimumWidth: CGFloat = 200
@@ -61,6 +62,16 @@ final class ClientRegistry: ObservableObject {
         windows[id]
     }
 
+    /// Screen Recording can be revoked or still ungranted; the listing is the
+    /// only reliable witness of that, so a refusal is logged once and then
+    /// retried slowly instead of every poll.
+    private func noteDenial(_ error: Error) {
+        let now = Date()
+        if let since = deniedSince, now.timeIntervalSince(since) < 60 { return }
+        deniedSince = now
+        Log.error("cannot list windows, Screen Recording is probably not granted: \(error.localizedDescription)")
+    }
+
     private func refreshSoon() {
         guard !isRefreshing else { return }
         isRefreshing = true
@@ -71,21 +82,18 @@ final class ClientRegistry: ObservableObject {
     }
 
     private func refresh() async {
-        guard Permissions.hasScreenRecording else {
-            if !clients.isEmpty { clients = [] }
-            return
-        }
-
         let allowed = Set(bundleIdentifiers())
         let content: SCShareableContent
         do {
             content = try await SCShareableContent.excludingDesktopWindows(
                 true, onScreenWindowsOnly: false)
         } catch {
-            Log.error("cannot list shareable content: \(error.localizedDescription)")
-            clients = []
+            noteDenial(error)
+            if !clients.isEmpty { clients = [] }
             return
         }
+
+        deniedSince = nil
 
         var found: [EVEClient] = []
         var byID: [CGWindowID: SCWindow] = [:]
@@ -107,6 +115,9 @@ final class ClientRegistry: ObservableObject {
         found.sort { ($0.pid, $0.windowID) < ($1.pid, $1.windowID) }
         windows = byID
         if found != clients {
+            if found.count != clients.count {
+                Log.info("tracking \(found.count) client(s) of \(content.windows.count) windows")
+            }
             clients = found
         }
     }

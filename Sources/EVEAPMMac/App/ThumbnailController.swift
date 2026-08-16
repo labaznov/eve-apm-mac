@@ -13,6 +13,7 @@ final class ThumbnailController {
         let stream: CaptureStream
         var client: EVEClient
         var pixelSize: CGSize
+        var isPlaced: Bool
     }
 
     private let registry: ClientRegistry
@@ -106,8 +107,8 @@ final class ThumbnailController {
         }
 
         thumbnails[id] = Thumbnail(panel: panel, view: view, stream: stream,
-                                   client: client, pixelSize: .zero)
-        layout(id, animated: false)
+                                   client: client, pixelSize: .zero, isPlaced: false)
+        layout(id)
         panel.orderFront(nil)
         startCapture(id)
     }
@@ -123,7 +124,7 @@ final class ThumbnailController {
         let aspectChanged = abs(thumbnail.client.aspectRatio - client.aspectRatio) > 0.01
         thumbnail.client = client
         thumbnails[client.windowID] = thumbnail
-        layout(client.windowID, animated: false)
+        layout(client.windowID)
         if aspectChanged {
             startCapture(client.windowID)
         }
@@ -146,25 +147,32 @@ final class ThumbnailController {
 
     private func apply(_ settings: Settings) {
         for id in thumbnails.keys {
-            layout(id, animated: true)
-            thumbnails[id]?.panel.setAlwaysOnTop(settings.alwaysOnTop)
-            thumbnails[id]?.panel.alphaValue = settings.opacity
+            layout(id)
         }
         refreshVisibility()
         scheduleAutoMinimize()
     }
 
-    private func layout(_ id: CGWindowID, animated: Bool) {
+    /// Resizes and repaints one thumbnail. The origin is only imposed the first
+    /// time a panel appears, so a poll of the client list never yanks a panel
+    /// out from under the pointer.
+    private func layout(_ id: CGWindowID) {
         guard var thumbnail = thumbnails[id] else { return }
         let settings = config.settings
         let width = settings.thumbnailWidth
         let height = (width / thumbnail.client.aspectRatio).rounded()
         let panel = thumbnail.panel
+        let size = CGSize(width: width, height: height)
 
-        let origin = settings.positions[thumbnail.client.label]?.cgPoint
-            ?? defaultOrigin(for: panel, index: thumbnails.count - 1)
-        panel.setFrame(CGRect(origin: origin, size: CGSize(width: width, height: height)),
-                       display: true, animate: false)
+        if panel.frame.size != size {
+            panel.setContentSize(size)
+        }
+        if !thumbnail.isPlaced {
+            let origin = settings.positions[thumbnail.client.label]?.cgPoint
+                ?? defaultOrigin(for: panel, index: thumbnails.count - 1)
+            panel.setFrameOrigin(origin)
+            thumbnail.isPlaced = true
+        }
         panel.ensureOnScreen()
         panel.setAlwaysOnTop(settings.alwaysOnTop)
         panel.alphaValue = settings.opacity

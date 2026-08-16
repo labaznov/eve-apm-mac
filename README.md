@@ -37,9 +37,14 @@ launch:
 Both live in System Settings → Privacy & Security. The Settings window shows a
 banner with a shortcut to the right pane while either is missing.
 
-An ad-hoc signed build gets a new signature on every rebuild, and macOS ties the
-grants to that signature — so after `make` you may have to re-approve. Signing
-with a stable identity avoids it: `make IDENTITY="Developer ID Application: …"`.
+macOS ties both grants to the signature of the app that asked for them, and an
+ad-hoc signature changes on every build — so every rebuild would lose them. Run
+this once to create a local self-signed identity, after which `make` picks it up
+automatically and the grants stick:
+
+```sh
+./scripts/dev-identity.sh
+```
 
 ## Features
 
