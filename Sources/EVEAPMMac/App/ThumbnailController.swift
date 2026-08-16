@@ -18,20 +18,28 @@ final class ThumbnailController {
 
     private let registry: ClientRegistry
     private let config: ConfigStore
+    private let logs: LogMonitor
     private var thumbnails: [CGWindowID: Thumbnail] = [:]
     private var cancellables = Set<AnyCancellable>()
     private var minimizeTask: Task<Void, Never>?
     private var thumbnailsHidden = false
-    /// The published value arrives before the registry's own property settles,
-    /// so the controller keeps the front process itself.
+    /// Published values arrive before the properties behind them settle, so
+    /// the controller keeps its own copy of what it was told.
     private var frontmostPID: pid_t?
+    private var settings = Settings()
 
-    init(registry: ClientRegistry, config: ConfigStore) {
+    private var alerts: [String: Alert] = [:]
+    private var alertTasks: [String: Task<Void, Never>] = [:]
+
+    init(registry: ClientRegistry, config: ConfigStore, logs: LogMonitor) {
         self.registry = registry
         self.config = config
+        self.logs = logs
     }
 
     func start() {
+        settings = config.settings
+
         registry.$clients
             .sink { [weak self] clients in self?.sync(with: clients) }
             .store(in: &cancellables)
@@ -45,6 +53,47 @@ final class ThumbnailController {
             .removeDuplicates()
             .sink { [weak self] settings in self?.apply(settings) }
             .store(in: &cancellables)
+
+        logs.$systems
+            .removeDuplicates()
+            .sink { [weak self] _ in self?.refreshVisibility() }
+            .store(in: &cancellables)
+
+        logs.onAlert = { [weak self] character, alert in self?.raise(alert, for: character) }
+    }
+
+    // MARK: - Alerts
+
+    /// Shows a notice on the character's thumbnail for a while. The point is to
+    /// catch the eye on a client the player is not looking at, so by default an
+    /// alert on the active client is dropped.
+    private func raise(_ alert: Alert, for character: String) {
+        let isActive = registry.clients.contains { $0.character == character && $0.pid == frontmostPID }
+        guard settings.alertsOnActiveClient || !isActive else { return }
+
+        alerts[character] = alert
+        refreshVisibility()
+
+        let duration = settings.alertDuration
+        alertTasks[character]?.cancel()
+        alertTasks[character] = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(duration))
+            guard !Task.isCancelled, let self else { return }
+            alerts[character] = nil
+            refreshVisibility()
+        }
+    }
+
+    private func appearance(for client: EVEClient) -> ThumbnailAppearance {
+        let isActive = client.pid == frontmostPID
+        let character = client.character
+        return ThumbnailAppearance(
+            name: settings.showCharacterName ? client.label : nil,
+            system: settings.showSystemName ? character.flatMap { logs.systems[$0] } : nil,
+            alert: character.flatMap { alerts[$0] }?.text,
+            labelColor: settings.labelColor,
+            border: settings.borderColor(for: client, isActive: isActive),
+            borderWidth: settings.borderWidth)
     }
 
     // MARK: - Commands
@@ -143,13 +192,14 @@ final class ThumbnailController {
         guard let thumbnail = thumbnails[id],
               let window = registry.window(for: id) else { return }
         let size = thumbnail.pixelSize
-        let frameRate = config.settings.frameRate
+        let frameRate = settings.frameRate
         Task { await thumbnail.stream.start(window: window, pixelSize: size, frameRate: frameRate) }
     }
 
     // MARK: - Appearance
 
     private func apply(_ settings: Settings) {
+        self.settings = settings
         for id in thumbnails.keys {
             layout(id)
         }
@@ -162,7 +212,6 @@ final class ThumbnailController {
     /// out from under the pointer.
     private func layout(_ id: CGWindowID) {
         guard var thumbnail = thumbnails[id] else { return }
-        let settings = config.settings
         let width = settings.thumbnailWidth
         let height = (width / thumbnail.client.aspectRatio).rounded()
         let panel = thumbnail.panel
@@ -182,12 +231,8 @@ final class ThumbnailController {
         panel.alphaValue = settings.opacity
         panel.ignoresMouseEvents = false
 
-        let isActive = thumbnail.client.pid == frontmostPID
         thumbnail.view.isDraggable = !settings.lockPositions
-        thumbnail.view.apply(label: settings.showCharacterName ? thumbnail.client.label : nil,
-                             color: settings.labelColor,
-                             border: settings.borderColor(for: thumbnail.client, isActive: isActive),
-                             borderWidth: settings.borderWidth)
+        thumbnail.view.apply(appearance(for: thumbnail.client))
 
         let scale = panel.screen?.backingScaleFactor ?? 2
         let pixelSize = CGSize(width: width * scale, height: height * scale)
@@ -214,7 +259,6 @@ final class ThumbnailController {
     }
 
     private func refreshVisibility() {
-        let settings = config.settings
         for (id, thumbnail) in thumbnails {
             let isActive = thumbnail.client.pid == frontmostPID
             let visible = !thumbnailsHidden && !(settings.hideActiveThumbnail && isActive)
@@ -223,10 +267,7 @@ final class ThumbnailController {
             } else if thumbnail.panel.isVisible {
                 thumbnail.panel.orderOut(nil)
             }
-            thumbnail.view.apply(label: settings.showCharacterName ? thumbnail.client.label : nil,
-                                 color: settings.labelColor,
-                                 border: settings.borderColor(for: thumbnail.client, isActive: isActive),
-                                 borderWidth: settings.borderWidth)
+            thumbnail.view.apply(appearance(for: thumbnail.client))
             _ = id
         }
     }
@@ -241,7 +282,6 @@ final class ThumbnailController {
 
     private func scheduleAutoMinimize() {
         minimizeTask?.cancel()
-        let settings = config.settings
         guard settings.autoMinimizeEnabled,
               let front = frontmostPID,
               registry.clients.contains(where: { $0.pid == front }) else { return }
@@ -255,7 +295,6 @@ final class ThumbnailController {
     }
 
     private func minimizeInactive(except front: pid_t) {
-        let settings = config.settings
         for client in registry.clients where client.pid != front && settings.minimizes(client) {
             WindowActivator.minimize(client)
         }

@@ -9,6 +9,7 @@ enum URLCommand: Equatable {
     case hideThumbnails
     case showThumbnails
     case openSettings
+    case switchProfile(name: String)
 
     static let scheme = "eveapm"
 
@@ -22,6 +23,7 @@ enum URLCommand: Equatable {
 
         switch (host, argument.lowercased()) {
         case ("character", _) where !argument.isEmpty: self = .activate(character: argument)
+        case ("profile", _) where !argument.isEmpty: self = .switchProfile(name: argument)
         case ("hotkey", "suspend"): self = .suspendHotkeys
         case ("hotkey", "resume"): self = .resumeHotkeys
         case ("thumbnail", "hide"): self = .hideThumbnails

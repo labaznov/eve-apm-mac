@@ -68,6 +68,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case .hideThumbnails: model.controller.setThumbnailsHidden(true)
         case .showThumbnails: model.controller.setThumbnailsHidden(false)
         case .openSettings: openSettings()
+        case .switchProfile(let name): model.config.switchTo(name)
         }
     }
 

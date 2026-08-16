@@ -6,6 +6,7 @@ struct SettingsView: View {
     @EnvironmentObject private var model: AppModel
     @ObservedObject private var config = AppModel.shared.config
     @ObservedObject private var registry = AppModel.shared.registry
+    @ObservedObject private var logs = AppModel.shared.logs
 
     var body: some View {
         VStack(spacing: 0) {
@@ -15,8 +16,15 @@ struct SettingsView: View {
                     .tabItem { Label("Thumbnails", systemImage: "rectangle.on.rectangle") }
                 BehaviourSettings(settings: $config.settings, characters: characters)
                     .tabItem { Label("Behaviour", systemImage: "gearshape") }
-                HotkeySettings(settings: $config.settings, characters: characters)
+                HotkeySettings(settings: $config.settings,
+                               globalHotkeys: $config.globalHotkeys,
+                               characters: characters,
+                               profiles: config.profiles)
                     .tabItem { Label("Hotkeys", systemImage: "keyboard") }
+                LogSettings(settings: $config.settings, systems: logs.systems)
+                    .tabItem { Label("Logs", systemImage: "doc.text.magnifyingglass") }
+                ProfileSettings(config: config)
+                    .tabItem { Label("Profiles", systemImage: "person.2") }
                 ClientList(clients: registry.clients, frontmost: registry.frontmostPID)
                     .tabItem { Label("Clients", systemImage: "list.bullet") }
             }
@@ -179,24 +187,19 @@ private struct BehaviourSettings: View {
 
 private struct HotkeySettings: View {
     @Binding var settings: Settings
+    @Binding var globalHotkeys: [Hotkey]
     let characters: [String]
+    let profiles: [String]
 
     var body: some View {
-        VStack(alignment: .leading) {
-            Table(of: Binding<Hotkey>.self) {
-                TableColumn("Action") { binding in
-                    Text(Self.describe(binding.wrappedValue.action))
-                }
-                TableColumn("Shortcut") { binding in
-                    HotkeyRecorder(keyCode: binding.keyCode, modifiers: binding.modifiers)
-                        .frame(height: 24)
-                }
-            } rows: {
-                ForEach($settings.hotkeys) { binding in
-                    TableRow(binding)
-                }
-            }
-            .frame(minHeight: 260)
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Shortcuts of this profile")
+                .font(.headline)
+            list($settings.hotkeys)
+
+            Text("Shortcuts shared by every profile")
+                .font(.headline)
+            list($globalHotkeys)
 
             HStack {
                 Menu("Add") {
@@ -204,6 +207,12 @@ private struct HotkeySettings: View {
                     Button("Cycle backward") { add(.cycleBackward) }
                     Button("Toggle thumbnails") { add(.toggleThumbnails) }
                     Button("Suspend or resume hotkeys") { add(.toggleHotkeys) }
+                    Divider()
+                    Button("Next profile") { add(.cycleProfileForward) }
+                    Button("Previous profile") { add(.cycleProfileBackward) }
+                    ForEach(profiles, id: \.self) { profile in
+                        Button("Switch to \(profile)") { add(.switchProfile(name: profile)) }
+                    }
                     if !characters.isEmpty {
                         Divider()
                         ForEach(characters, id: \.self) { character in
@@ -213,10 +222,8 @@ private struct HotkeySettings: View {
                 }
                 .frame(width: 120)
 
-                Button("Remove last") {
-                    if !settings.hotkeys.isEmpty { settings.hotkeys.removeLast() }
-                }
-                .disabled(settings.hotkeys.isEmpty)
+                Button("Remove last") { removeLast() }
+                    .disabled(settings.hotkeys.isEmpty && globalHotkeys.isEmpty)
 
                 Spacer()
             }
@@ -224,8 +231,38 @@ private struct HotkeySettings: View {
         .padding(8)
     }
 
+    private func list(_ hotkeys: Binding<[Hotkey]>) -> some View {
+        Table(of: Binding<Hotkey>.self) {
+            TableColumn("Action") { binding in
+                Text(Self.describe(binding.wrappedValue.action))
+            }
+            TableColumn("Shortcut") { binding in
+                HotkeyRecorder(keyCode: binding.keyCode, modifiers: binding.modifiers)
+                    .frame(height: 24)
+            }
+        } rows: {
+            ForEach(hotkeys) { binding in
+                TableRow(binding)
+            }
+        }
+        .frame(minHeight: 120)
+    }
+
     private func add(_ action: HotkeyAction) {
-        settings.hotkeys.append(Hotkey(keyCode: 0, modifiers: 0, action: action))
+        let hotkey = Hotkey(keyCode: 0, modifiers: 0, action: action)
+        if action.isGlobal {
+            globalHotkeys.append(hotkey)
+        } else {
+            settings.hotkeys.append(hotkey)
+        }
+    }
+
+    private func removeLast() {
+        if !settings.hotkeys.isEmpty {
+            settings.hotkeys.removeLast()
+        } else if !globalHotkeys.isEmpty {
+            globalHotkeys.removeLast()
+        }
     }
 
     private static func describe(_ action: HotkeyAction) -> String {
@@ -235,6 +272,9 @@ private struct HotkeySettings: View {
         case .cycleBackward: "Cycle backward"
         case .toggleThumbnails: "Toggle thumbnails"
         case .toggleHotkeys: "Suspend or resume hotkeys"
+        case .switchProfile(let name): "Switch to profile \(name)"
+        case .cycleProfileForward: "Next profile"
+        case .cycleProfileBackward: "Previous profile"
         }
     }
 }
@@ -261,6 +301,116 @@ private struct ClientList: View {
                 TableColumn("PID") { client in
                     Text("\(client.pid)").monospacedDigit()
                 }
+            }
+        }
+        .padding(8)
+    }
+}
+
+private struct LogSettings: View {
+    @Binding var settings: Settings
+    let systems: [String: String]
+
+    var body: some View {
+        Form {
+            Section("Monitoring") {
+                Toggle("Read chat logs for system changes", isOn: $settings.monitorChatLogs)
+                Toggle("Read game logs for jumps and notices", isOn: $settings.monitorGameLogs)
+                Toggle("Show the system name on thumbnails", isOn: $settings.showSystemName)
+            }
+
+            Section("Alerts") {
+                Toggle("Show alerts on thumbnails", isOn: $settings.alertsEnabled)
+                Toggle("Also on the client in use", isOn: $settings.alertsOnActiveClient)
+                    .disabled(!settings.alertsEnabled)
+                LabeledContent("Shown for") {
+                    HStack {
+                        Slider(value: $settings.alertDuration, in: 1...30, step: 1)
+                        Text("\(Int(settings.alertDuration)) s").monospacedDigit().frame(width: 50)
+                    }
+                }
+                .disabled(!settings.alertsEnabled)
+
+                ForEach(AlertKind.allCases, id: \.rawValue) { kind in
+                    Toggle(kind.title, isOn: Binding(
+                        get: { !settings.mutedAlerts.contains(kind.rawValue) },
+                        set: { show in
+                            if show {
+                                settings.mutedAlerts.removeAll { $0 == kind.rawValue }
+                            } else if !settings.mutedAlerts.contains(kind.rawValue) {
+                                settings.mutedAlerts.append(kind.rawValue)
+                            }
+                        }
+                    ))
+                    .disabled(!settings.alertsEnabled)
+                }
+            }
+
+            Section("Folders") {
+                TextField("Chat logs", text: $settings.chatLogDirectory,
+                          prompt: Text(Settings.defaultLogDirectory(.chat).path))
+                TextField("Game logs", text: $settings.gameLogDirectory,
+                          prompt: Text(Settings.defaultLogDirectory(.game).path))
+            }
+
+            Section("Seen") {
+                if systems.isEmpty {
+                    Text("No character located yet").foregroundStyle(.secondary)
+                }
+                ForEach(systems.sorted(by: { $0.key < $1.key }), id: \.key) { character, system in
+                    LabeledContent(character) { Text(system).monospaced() }
+                }
+            }
+        }
+        .formStyle(.grouped)
+    }
+}
+
+private struct ProfileSettings: View {
+    @ObservedObject var config: ConfigStore
+    @State private var newName = ""
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("A profile holds a whole set of settings: sizes, positions, colours and its own shortcuts. Switch between them with a shortcut or an eveapm://profile/<name> link.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+
+            List(config.profiles, id: \.self, selection: Binding(
+                get: { config.currentProfile },
+                set: { name in config.switchTo(name ?? config.currentProfile) }
+            )) { name in
+                HStack {
+                    Text(name)
+                    if name == config.currentProfile {
+                        Text("in use").font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+                .tag(name)
+            }
+            .frame(minHeight: 200)
+
+            HStack {
+                TextField("New profile", text: $newName)
+                    .frame(width: 160)
+                Button("Add") {
+                    config.createProfile(named: newName)
+                    newName = ""
+                }
+                .disabled(newName.trimmingCharacters(in: .whitespaces).isEmpty)
+
+                Button("Add empty") {
+                    config.createProfile(named: newName, copyingCurrent: false)
+                    newName = ""
+                }
+                .disabled(newName.trimmingCharacters(in: .whitespaces).isEmpty)
+
+                Spacer()
+
+                Button("Delete", role: .destructive) {
+                    config.deleteProfile(config.currentProfile)
+                }
+                .disabled(config.profiles.count < 2)
             }
         }
         .padding(8)

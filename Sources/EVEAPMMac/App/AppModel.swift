@@ -8,6 +8,7 @@ final class AppModel: ObservableObject {
 
     let config: ConfigStore
     let registry: ClientRegistry
+    let logs = LogMonitor()
     let controller: ThumbnailController
     let hotkeys = HotkeyManager()
 
@@ -22,20 +23,27 @@ final class AppModel: ObservableObject {
         let registry = ClientRegistry(bundleIdentifiers: { config.settings.clientBundleIdentifiers })
         self.config = config
         self.registry = registry
-        controller = ThumbnailController(registry: registry, config: config)
+        controller = ThumbnailController(registry: registry, config: config, logs: logs)
     }
 
     func start() {
+        Log.info("starting with screen recording \(hasScreenRecording), accessibility \(hasAccessibility)")
+
         hotkeys.onAction = { [weak self] action in self?.perform(action) }
-        config.$settings
-            .map(\.hotkeys)
+        Publishers.CombineLatest(config.$settings.map(\.hotkeys), config.$globalHotkeys)
+            .map { $0 + $1 }
             .removeDuplicates()
             .sink { [weak self] hotkeys in self?.hotkeys.apply(hotkeys) }
             .store(in: &cancellables)
 
-        Log.info("starting with screen recording \(hasScreenRecording), accessibility \(hasAccessibility)")
+        config.$settings
+            .removeDuplicates()
+            .sink { [weak self] settings in self?.logs.apply(settings) }
+            .store(in: &cancellables)
+
         controller.start()
         registry.start()
+        logs.start()
         watchPermissions()
     }
 
@@ -46,6 +54,9 @@ final class AppModel: ObservableObject {
         case .cycleBackward: controller.cycle(forward: false)
         case .toggleThumbnails: controller.setThumbnailsHidden(!controller.areThumbnailsHidden)
         case .toggleHotkeys: hotkeys.toggleSuspended()
+        case .switchProfile(let name): config.switchTo(name)
+        case .cycleProfileForward: config.cycleProfile(forward: true)
+        case .cycleProfileBackward: config.cycleProfile(forward: false)
         }
     }
 

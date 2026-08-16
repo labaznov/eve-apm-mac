@@ -35,6 +35,18 @@ enum HotkeyAction: Codable, Sendable, Equatable, Hashable {
     case cycleBackward
     case toggleThumbnails
     case toggleHotkeys
+    case switchProfile(name: String)
+    case cycleProfileForward
+    case cycleProfileBackward
+
+    /// Profile switching has to keep working after the profile changes, so
+    /// those shortcuts are held outside any profile.
+    var isGlobal: Bool {
+        switch self {
+        case .switchProfile, .cycleProfileForward, .cycleProfileBackward: true
+        default: false
+        }
+    }
 }
 
 /// A global hotkey as the Carbon hotkey API wants it: a virtual key code and a
@@ -72,6 +84,18 @@ struct Settings: Codable, Sendable, Equatable {
     /// because Singularity and third-party launchers ship their own bundles.
     var clientBundleIdentifiers: [String] = ["com.ccpgames.eveonline"]
 
+    var showSystemName: Bool = true
+    var monitorChatLogs: Bool = true
+    var monitorGameLogs: Bool = true
+    var alertsEnabled: Bool = true
+    var alertsOnActiveClient: Bool = false
+    var alertDuration: Double = 6
+    var mutedAlerts: [String] = []
+
+    /// Empty means the place EVE writes its logs by default.
+    var chatLogDirectory: String = ""
+    var gameLogDirectory: String = ""
+
     static let thumbnailWidthRange: ClosedRange<Double> = 80...800
     static let frameRateRange: ClosedRange<Int> = 1...30
     static let opacityRange: ClosedRange<Double> = 0.2...1.0
@@ -88,7 +112,25 @@ struct Settings: Codable, Sendable, Equatable {
                            Settings.opacityRange.upperBound)
         copy.borderWidth = min(max(borderWidth, 0), 12)
         copy.autoMinimizeDelay = min(max(autoMinimizeDelay, 0.5), 120)
+        copy.alertDuration = min(max(alertDuration, 1), 60)
         return copy
+    }
+
+    func shows(_ alert: AlertKind) -> Bool {
+        alertsEnabled && !mutedAlerts.contains(alert.rawValue)
+    }
+
+    /// Where EVE keeps its logs, unless the user pointed elsewhere.
+    static func defaultLogDirectory(_ kind: LogKind) -> URL {
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Documents/EVE/logs", isDirectory: true)
+            .appendingPathComponent(kind == .chat ? "Chatlogs" : "Gamelogs", isDirectory: true)
+    }
+
+    func logDirectory(_ kind: LogKind) -> URL {
+        let configured = kind == .chat ? chatLogDirectory : gameLogDirectory
+        guard !configured.isEmpty else { return Settings.defaultLogDirectory(kind) }
+        return URL(fileURLWithPath: (configured as NSString).expandingTildeInPath, isDirectory: true)
     }
 
     func borderColor(for client: EVEClient, isActive: Bool) -> RGBAColor {

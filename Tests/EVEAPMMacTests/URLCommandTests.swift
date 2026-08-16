@@ -19,6 +19,11 @@ final class URLCommandTests: XCTestCase {
         XCTAssertEqual(URLCommand(url: URL(string: "eveapm://config/open")!), .openSettings)
     }
 
+    func testSwitchesProfileFromLink() {
+        XCTAssertEqual(URLCommand(url: URL(string: "eveapm://profile/mining")!),
+                       .switchProfile(name: "mining"))
+    }
+
     func testCharacterLinkWithoutNameIsRejected() {
         XCTAssertNil(URLCommand(url: URL(string: "eveapm://character/")!))
     }

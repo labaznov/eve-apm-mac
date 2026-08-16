@@ -64,18 +64,37 @@ automatically and the grants stick:
 - Global shortcuts to switch to a named character, cycle forward or backward,
   toggle the thumbnails, or suspend the hotkeys themselves
 
+**Logs**
+- The solar system each character sits in, shown on its thumbnail, read from the
+  Local channel log and from jumps in the game log
+- Alerts on the thumbnail of a client you are not looking at: fleet invites,
+  follow-in-warp and regroup orders, conversation requests, decloaks, finished
+  compression runs, broken mining crystals, mining stopped by a depleted
+  asteroid or a full hold
+- Each alert kind can be silenced on its own, and the log folders can be pointed
+  elsewhere
+
+**Profiles**
+- Any number of named profiles, each with its own sizes, positions, colours,
+  behaviour and shortcuts
+- Switch by shortcut, by menu or by link; the profile-switching shortcuts are
+  shared by every profile so they keep working after a switch
+
 **Links**
 - `eveapm://character/<name>` — switch to that character
+- `eveapm://profile/<name>` — switch profile
 - `eveapm://hotkey/suspend`, `eveapm://hotkey/resume`
 - `eveapm://thumbnail/hide`, `eveapm://thumbnail/show`
 - `eveapm://config/open`
 
-## What is not here yet
+## Where things are kept
 
-Chat and game log monitoring (system names on thumbnails, combat alerts) and
-configuration profiles are in the Windows original and not in this one yet. EVE
-writes the same logs on macOS, under `~/Documents/EVE/logs`, so the parsing work
-carries over.
+Profiles live in `~/Library/Application Support/EVE-APM-Mac/profiles/<name>.json`
+and the chosen profile in `state.json` beside them. Logs are read from
+`~/Documents/EVE/logs`, which macOS may ask you to allow the first time.
+
+The one thing the Windows original does that this does not is track a mining
+cycle by its ticks; the events that end a cycle are reported.
 
 ## Notes for multiboxing on macOS
 
