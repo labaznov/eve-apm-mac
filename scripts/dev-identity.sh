@@ -37,4 +37,9 @@ security import "$work/identity.p12" \
 	-k "$HOME/Library/Keychains/login.keychain-db" -P eveapm -A
 
 echo "created identity \"$NAME\""
+echo
+echo "The first build asks for the login keychain password, because codesign"
+echo "has to reach the new private key. Answer it with \"Always Allow\" and it"
+echo "will not ask again."
+echo
 echo "build with: make"

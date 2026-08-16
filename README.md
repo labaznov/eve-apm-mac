@@ -46,6 +46,10 @@ automatically and the grants stick:
 ./scripts/dev-identity.sh
 ```
 
+The first build after that asks for the login keychain password, because
+`codesign` has to reach the new private key. Answer with **Always Allow** and it
+stops asking; plain *Allow* only covers that one build.
+
 ## Features
 
 **Windows**
