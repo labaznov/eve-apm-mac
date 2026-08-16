@@ -22,6 +22,9 @@ final class ThumbnailController {
     private var cancellables = Set<AnyCancellable>()
     private var minimizeTask: Task<Void, Never>?
     private var thumbnailsHidden = false
+    /// The published value arrives before the registry's own property settles,
+    /// so the controller keeps the front process itself.
+    private var frontmostPID: pid_t?
 
     init(registry: ClientRegistry, config: ConfigStore) {
         self.registry = registry
@@ -35,7 +38,7 @@ final class ThumbnailController {
 
         registry.$frontmostPID
             .removeDuplicates()
-            .sink { [weak self] _ in self?.frontmostChanged() }
+            .sink { [weak self] pid in self?.frontmostChanged(to: pid) }
             .store(in: &cancellables)
 
         config.$settings
@@ -58,7 +61,7 @@ final class ThumbnailController {
     func cycle(forward: Bool) {
         let clients = registry.clients
         guard !clients.isEmpty else { return }
-        let current = clients.firstIndex { $0.pid == registry.frontmostPID }
+        let current = clients.firstIndex { $0.pid == frontmostPID }
         let next = current.map { forward ? ($0 + 1) % clients.count
                                          : ($0 - 1 + clients.count) % clients.count } ?? 0
         activate(clients[next])
@@ -74,6 +77,7 @@ final class ThumbnailController {
     // MARK: - Lifecycle of panels
 
     private func sync(with clients: [EVEClient]) {
+        frontmostPID = registry.frontmostPID
         let live = Set(clients.map(\.windowID))
         for id in thumbnails.keys where !live.contains(id) {
             remove(id)
@@ -178,7 +182,7 @@ final class ThumbnailController {
         panel.alphaValue = settings.opacity
         panel.ignoresMouseEvents = false
 
-        let isActive = thumbnail.client.pid == registry.frontmostPID
+        let isActive = thumbnail.client.pid == frontmostPID
         thumbnail.view.isDraggable = !settings.lockPositions
         thumbnail.view.apply(label: settings.showCharacterName ? thumbnail.client.label : nil,
                              color: settings.labelColor,
@@ -212,7 +216,7 @@ final class ThumbnailController {
     private func refreshVisibility() {
         let settings = config.settings
         for (id, thumbnail) in thumbnails {
-            let isActive = thumbnail.client.pid == registry.frontmostPID
+            let isActive = thumbnail.client.pid == frontmostPID
             let visible = !thumbnailsHidden && !(settings.hideActiveThumbnail && isActive)
             if visible {
                 if !thumbnail.panel.isVisible { thumbnail.panel.orderFront(nil) }
@@ -229,7 +233,8 @@ final class ThumbnailController {
 
     // MARK: - Auto minimise
 
-    private func frontmostChanged() {
+    private func frontmostChanged(to pid: pid_t?) {
+        frontmostPID = pid
         refreshVisibility()
         scheduleAutoMinimize()
     }
@@ -238,7 +243,7 @@ final class ThumbnailController {
         minimizeTask?.cancel()
         let settings = config.settings
         guard settings.autoMinimizeEnabled,
-              let front = registry.frontmostPID,
+              let front = frontmostPID,
               registry.clients.contains(where: { $0.pid == front }) else { return }
 
         let delay = settings.autoMinimizeDelay
