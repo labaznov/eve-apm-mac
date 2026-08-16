@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleExecutable</key>
+	<string>EVEAPMMac</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.github.labaznov.eveapmmac</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>EVE-APM Mac</string>
+	<key>CFBundleDisplayName</key>
+	<string>EVE-APM Mac</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>0.1.0</string>
+	<key>CFBundleVersion</key>
+	<string>1</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>14.0</string>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.utilities</string>
+	<key>LSUIElement</key>
+	<true/>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>NSHumanReadableCopyright</key>
+	<string>MIT licensed. Not affiliated with or endorsed by CCP hf.</string>
+	<key>NSDocumentsFolderUsageDescription</key>
+	<string>EVE-APM Mac reads the EVE Online chat and game logs in your Documents folder to show system names on thumbnails.</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>EVE-APM Mac</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>eveapm</string>
+			</array>
+		</dict>
+	</array>
+</dict>
+</plist>
