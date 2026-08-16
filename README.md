@@ -151,6 +151,17 @@ Run the clients in windowed mode. A client in native full screen owns its own
 Space, and macOS switches Spaces with an animation on every activation, which is
 slower and more disorienting than the window raise you get in windowed mode.
 
+## Releases
+
+```sh
+./scripts/release.sh 0.2.1 [notes.md]
+```
+
+It stamps the version into `Info.plist`, runs the tests, builds the universal
+app, tags the commit and uploads the archive. A published version is never
+rewritten: every build that reaches anyone gets a number of its own, so a report
+of "it happens on 0.2.1" means one exact binary.
+
 ## Licence
 
 MIT, see [LICENSE](LICENSE) and [NOTICE.md](NOTICE.md).
