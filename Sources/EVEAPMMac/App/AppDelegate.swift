@@ -36,10 +36,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @MainActor
     private func buildStatusItem() {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        item.button?.image = NSImage(systemSymbolName: "rectangle.on.rectangle",
-                                     accessibilityDescription: "EVE-APM Mac")
+        item.button?.image = menuBarIcon()
         item.menu = buildMenu()
         statusItem = item
+    }
+
+    /// The bee, reduced to a template so the menu bar tints it to match the
+    /// bar it sits in. Falls back to a symbol if the resource is missing.
+    private func menuBarIcon() -> NSImage? {
+        guard let url = Bundle.main.url(forResource: "MenuBarIcon", withExtension: "png"),
+              let image = NSImage(contentsOf: url) else {
+            return NSImage(systemSymbolName: "rectangle.on.rectangle",
+                           accessibilityDescription: "EVE-APM Mac")
+        }
+        image.size = NSSize(width: 18, height: 18)
+        image.isTemplate = true
+        image.accessibilityDescription = "EVE-APM Mac"
+        return image
     }
 
     @MainActor

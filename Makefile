@@ -25,6 +25,7 @@ bundle: build
 	cp "$(shell swift build -c $(CONFIG) $(ARCHS) --show-bin-path)/$(BINARY)" "$(BUNDLE)/Contents/MacOS/$(BINARY)"
 	cp Resources/Info.plist "$(BUNDLE)/Contents/Info.plist"
 	cp Resources/AppIcon.icns "$(BUNDLE)/Contents/Resources/AppIcon.icns"
+	cp Resources/MenuBarIcon.png "$(BUNDLE)/Contents/Resources/MenuBarIcon.png"
 	printf 'APPL????' > "$(BUNDLE)/Contents/PkgInfo"
 	xattr -cr "$(BUNDLE)"
 	codesign --force --sign "$(IDENTITY)" --identifier com.github.labaznov.eveapmmac "$(BUNDLE)"
@@ -37,6 +38,7 @@ run: bundle
 # changes, the result is committed.
 icon:
 	swift scripts/make-icon.swift
+	swift scripts/make-menubar-icon.swift
 
 test:
 	swift test
