@@ -48,6 +48,24 @@ final class SettingsTests: XCTestCase {
         XCTAssertFalse(Settings().minimizes(client(character: "Qrth Vlaadimir")))
     }
 
+    func testAPositionSavedAgainstAProcessIsDropped() {
+        var settings = Settings()
+        settings.positions["Client 28720"] = StoredPoint(CGPoint(x: 10, y: 20))
+        XCTAssertTrue(settings.clamped().positions.isEmpty)
+    }
+
+    func testACharacterPositionSurvivesTheCleanup() {
+        var settings = Settings()
+        settings.positions["Zar Kai"] = StoredPoint(CGPoint(x: 10, y: 20))
+        XCTAssertEqual(settings.clamped().positions["Zar Kai"]?.x, 10)
+    }
+
+    func testACharacterNamedLikeAProcessKeyIsKept() {
+        var settings = Settings()
+        settings.positions["Client Nine"] = StoredPoint(CGPoint(x: 10, y: 20))
+        XCTAssertNotNil(settings.clamped().positions["Client Nine"])
+    }
+
     func testClientWithoutCharacterIsMinimised() {
         var settings = Settings()
         settings.autoMinimizeEnabled = true

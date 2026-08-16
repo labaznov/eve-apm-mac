@@ -201,7 +201,12 @@ final class ThumbnailController {
     private func update(_ client: EVEClient) {
         guard var thumbnail = thumbnails[client.windowID] else { return }
         let aspectChanged = abs(thumbnail.client.aspectRatio - client.aspectRatio) > 0.01
+        // A client starts on the login screen and only names its character once
+        // one is chosen. That is the moment its remembered position becomes
+        // known, so the thumbnail is placed again.
+        let characterChanged = thumbnail.client.character != client.character
         thumbnail.client = client
+        if characterChanged { thumbnail.isPlaced = false }
         thumbnails[client.windowID] = thumbnail
         layout(client.windowID)
         if aspectChanged {
@@ -247,7 +252,12 @@ final class ThumbnailController {
             panel.setContentSize(size)
         }
         if !thumbnail.isPlaced {
-            place(panel, of: thumbnail.client, size: size)
+            // Before a character is known the thumbnail cascades into a free
+            // spot; once it is, it moves to that character's place if it has
+            // one and stays put if it does not.
+            let fallback = panel.isVisible ? panel.frame.origin
+                                           : defaultOrigin(for: panel, index: thumbnails.count - 1)
+            place(panel, of: thumbnail.client, size: size, fallback: fallback)
             thumbnail.isPlaced = true
         }
         panel.setAlwaysOnTop(settings.alwaysOnTop)
@@ -278,8 +288,9 @@ final class ThumbnailController {
     /// untouched as long as it lands on a display attached now; one that does
     /// not is dropped and replaced with a fresh position, which is written back
     /// straight away so the file never holds a place nobody can reach.
-    private func place(_ panel: ThumbnailPanel, of client: EVEClient, size: CGSize) {
-        let remembered = settings.positions[client.label]?.cgPoint
+    private func place(_ panel: ThumbnailPanel, of client: EVEClient, size: CGSize,
+                       fallback: CGPoint) {
+        let remembered = client.character.flatMap { settings.positions[$0]?.cgPoint }
         if let remembered, ScreenGeometry.fits(CGRect(origin: remembered, size: size)) {
             panel.setFrameOrigin(remembered)
             return
@@ -288,17 +299,21 @@ final class ThumbnailController {
         if remembered != nil {
             Log.info("dropped an off-screen position for \(client.label)")
         }
-        panel.setFrameOrigin(defaultOrigin(for: panel, index: thumbnails.count - 1))
+        panel.setFrameOrigin(fallback)
         remember(panel.frame.origin, of: client)
     }
 
     /// Positions are written the moment a thumbnail moves, and pushed to disk
     /// at once, so a crash or a forced quit cannot lose an arrangement.
     private func remember(_ origin: CGPoint, of client: EVEClient) {
+        // Only a character earns a remembered place. A client on the login
+        // screen is a different process every session, and keying its position
+        // on that would fill the file with entries nothing can use again.
+        guard let character = client.character else { return }
         let stored = StoredPoint(origin)
-        guard settings.positions[client.label] != stored else { return }
-        settings.positions[client.label] = stored
-        config.settings.positions[client.label] = stored
+        guard settings.positions[character] != stored else { return }
+        settings.positions[character] = stored
+        config.settings.positions[character] = stored
     }
 
     /// Re-checks every thumbnail against the displays, for when a monitor is

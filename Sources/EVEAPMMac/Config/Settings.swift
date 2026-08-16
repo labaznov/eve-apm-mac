@@ -113,7 +113,17 @@ struct Settings: Codable, Sendable, Equatable {
         copy.borderWidth = min(max(borderWidth, 0), 12)
         copy.autoMinimizeDelay = min(max(autoMinimizeDelay, 0.5), 120)
         copy.alertDuration = min(max(alertDuration, 1), 60)
+        copy.positions = positions.filter { !Settings.isProcessKey($0.key) }
         return copy
+    }
+
+    /// Earlier builds saved a position for a client that had no character yet,
+    /// under a key made from its process. Those keys never match anything again
+    /// and are dropped on the way in.
+    static func isProcessKey(_ key: String) -> Bool {
+        guard key.hasPrefix("Client ") else { return false }
+        let rest = key.dropFirst("Client ".count)
+        return !rest.isEmpty && rest.allSatisfy(\.isNumber)
     }
 
     func shows(_ alert: AlertKind) -> Bool {
