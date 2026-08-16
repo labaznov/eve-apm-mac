@@ -53,6 +53,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .target = self
         menu.addItem(withTitle: "Suspend Hotkeys", action: #selector(toggleHotkeys), keyEquivalent: "")
             .target = self
+
+        let profiles = NSMenuItem(title: "Profile", action: nil, keyEquivalent: "")
+        profiles.submenu = NSMenu()
+        menu.addItem(profiles)
+
         menu.addItem(.separator())
         menu.addItem(withTitle: "Quit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         return menu
@@ -104,6 +109,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @MainActor
+    @objc private func chooseProfile(_ item: NSMenuItem) {
+        AppModel.shared.config.switchTo(item.title)
+    }
+
+    /// The profiles are listed when the menu opens, because one can be added
+    /// from the settings window or by dropping a file in at any time.
+    @MainActor
+    private func refreshProfiles(in menu: NSMenu) {
+        let config = AppModel.shared.config
+        menu.removeAllItems()
+        for name in config.profiles {
+            let item = menu.addItem(withTitle: name, action: #selector(chooseProfile(_:)),
+                                    keyEquivalent: "")
+            item.target = self
+            item.state = name == config.currentProfile ? .on : .off
+        }
+    }
+
+    @MainActor
     private func requestMissingPermissions() {
         if !Permissions.hasScreenRecording { Permissions.requestScreenRecording() }
         if !Permissions.hasAccessibility { Permissions.requestAccessibility() }
@@ -118,6 +142,9 @@ extension AppDelegate: NSMenuDelegate {
                 ? "Show Thumbnails" : "Hide Thumbnails"
             menu.item(at: 2)?.title = model.hotkeys.isSuspended
                 ? "Resume Hotkeys" : "Suspend Hotkeys"
+            if let profiles = menu.item(at: 3)?.submenu {
+                refreshProfiles(in: profiles)
+            }
         }
     }
 }
