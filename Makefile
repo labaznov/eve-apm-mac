@@ -12,7 +12,7 @@ ARCHIVE  := build/EVE-APM-Mac-$(VERSION)-universal.zip
 # rebuilds; scripts/dev-identity.sh creates one. Falls back to ad-hoc signing.
 IDENTITY ?= $(shell security find-certificate -c "EVE-APM Mac Dev" >/dev/null 2>&1 && echo "EVE-APM Mac Dev" || echo -)
 
-.PHONY: all build bundle run test release clean
+.PHONY: all build bundle icon run test release clean
 
 all: bundle
 
@@ -24,6 +24,7 @@ bundle: build
 	mkdir -p "$(BUNDLE)/Contents/MacOS" "$(BUNDLE)/Contents/Resources"
 	cp "$(shell swift build -c $(CONFIG) $(ARCHS) --show-bin-path)/$(BINARY)" "$(BUNDLE)/Contents/MacOS/$(BINARY)"
 	cp Resources/Info.plist "$(BUNDLE)/Contents/Info.plist"
+	cp Resources/AppIcon.icns "$(BUNDLE)/Contents/Resources/AppIcon.icns"
 	printf 'APPL????' > "$(BUNDLE)/Contents/PkgInfo"
 	xattr -cr "$(BUNDLE)"
 	codesign --force --sign "$(IDENTITY)" --identifier com.github.labaznov.eveapmmac "$(BUNDLE)"
@@ -31,6 +32,11 @@ bundle: build
 
 run: bundle
 	open "$(BUNDLE)"
+
+# Regenerates the icon from Resources/bee.png; only needed when the artwork
+# changes, the result is committed.
+icon:
+	swift scripts/make-icon.swift
 
 test:
 	swift test
