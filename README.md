@@ -67,6 +67,9 @@ stops asking; plain *Allow* only covers that one build.
 **Hotkeys**
 - Global shortcuts to switch to a named character, cycle forward or backward,
   toggle the thumbnails, or suspend the hotkeys themselves
+- Restricted to EVE by default: while another application is in front the
+  shortcuts are unregistered, so even a bare arrow key reaches that application
+  untouched
 
 **Logs**
 - The solar system each character sits in, shown on its thumbnail, read from the
@@ -99,6 +102,14 @@ and the chosen profile in `state.json` beside them. Logs are read from
 
 The one thing the Windows original does that this does not is track a mining
 cycle by its ticks; the events that end a cycle are reported.
+
+## When thumbnails go blank
+
+macOS can leave its screen capture service wedged — streams start, no frames
+ever arrive, and every capturing application on the machine is affected. **Restart
+Screen Capture…** in the menu asks for an administrator password and restarts
+the service; macOS brings it back by itself. The menu item says *(no frames)*
+when the app can tell this has happened.
 
 ## Notes for multiboxing on macOS
 

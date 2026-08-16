@@ -14,7 +14,19 @@ final class CaptureStream {
     private let queue = DispatchQueue(label: "com.github.labaznov.eveapmmac.capture",
                                       qos: .userInitiated)
     private(set) var isRunning = false
+    private(set) var lastFrameAt: Date?
+    private var startedAt: Date?
     var onFailure: (() -> Void)?
+
+    /// True when the stream was accepted but the window server has gone quiet.
+    /// A minimised client also stops producing frames, so this is a hint rather
+    /// than a fault on its own.
+    var isStalled: Bool {
+        guard isRunning, let since = lastFrameAt ?? startedAt else { return false }
+        return Date().timeIntervalSince(since) > Self.stallAfter
+    }
+
+    private static let stallAfter: TimeInterval = 10
 
     init() {
         layer.videoGravity = .resizeAspect
@@ -40,6 +52,8 @@ final class CaptureStream {
             self.stream = stream
             self.output = output
             self.delegate = delegate
+            startedAt = Date()
+            lastFrameAt = nil
             isRunning = true
         } catch {
             Log.error("cannot capture window \(window.windowID): \(error.localizedDescription)")
@@ -84,6 +98,7 @@ final class CaptureStream {
 
     private func display(_ buffer: CMSampleBuffer) {
         guard Self.isCompleteFrame(buffer) else { return }
+        lastFrameAt = Date()
         let renderer = layer.sampleBufferRenderer
         if renderer.status == .failed {
             renderer.flush()

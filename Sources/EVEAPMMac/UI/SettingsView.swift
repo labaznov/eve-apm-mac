@@ -193,6 +193,9 @@ private struct HotkeySettings: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
+            Toggle("Only while an EVE client is in front", isOn: $settings.hotkeysRequireEVEFocus)
+                .help("Leaves the keys to whatever other application you are using")
+
             Text("Shortcuts of this profile")
                 .font(.headline)
             list($settings.hotkeys)

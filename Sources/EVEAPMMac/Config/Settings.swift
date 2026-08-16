@@ -78,7 +78,7 @@ struct Settings: Codable, Sendable, Equatable {
     var neverMinimize: [String] = []
     var positions: [String: StoredPoint] = [:]
     var hotkeys: [Hotkey] = []
-    var hotkeysRequireEVEFocus: Bool = false
+    var hotkeysRequireEVEFocus: Bool = true
 
     /// Bundle identifiers whose windows count as EVE clients. Kept editable
     /// because Singularity and third-party launchers ship their own bundles.

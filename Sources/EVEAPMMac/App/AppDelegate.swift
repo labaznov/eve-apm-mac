@@ -72,6 +72,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(profiles)
 
         menu.addItem(.separator())
+        menu.addItem(withTitle: "Restart Screen Capture…", action: #selector(restartCapture),
+                     keyEquivalent: "")
+            .target = self
+
+        menu.addItem(.separator())
         menu.addItem(withTitle: "Quit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         return menu
     }
@@ -81,8 +86,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let model = AppModel.shared
         switch command {
         case .activate(let character): model.controller.activate(character: character)
-        case .suspendHotkeys: model.hotkeys.suspend()
-        case .resumeHotkeys: model.hotkeys.resume()
+        case .suspendHotkeys: model.setHotkeysSuspended(true)
+        case .resumeHotkeys: model.setHotkeysSuspended(false)
         case .hideThumbnails: model.controller.setThumbnailsHidden(true)
         case .showThumbnails: model.controller.setThumbnailsHidden(false)
         case .openSettings: openSettings()
@@ -118,7 +123,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @MainActor
     @objc private func toggleHotkeys() {
-        AppModel.shared.hotkeys.toggleSuspended()
+        AppModel.shared.toggleHotkeySuspension()
+    }
+
+    /// macOS can leave its screen capture service wedged: streams start, no
+    /// frames ever arrive, and nothing short of restarting the service or the
+    /// session brings it back. The service is protected, so the kill goes
+    /// through the system's own authorisation prompt.
+    @MainActor
+    @objc private func restartCapture() {
+        let alert = NSAlert()
+        alert.messageText = "Restart the screen capture service?"
+        alert.informativeText = "Thumbnails stay blank when macOS stops delivering frames. "
+            + "Restarting its capture service usually fixes it, and macOS starts the service "
+            + "again by itself. You will be asked for an administrator password, because the "
+            + "service is protected.\n\nAny other screen recording or sharing in progress will stop."
+        alert.addButton(withTitle: "Restart")
+        alert.addButton(withTitle: "Cancel")
+        NSApp.activate(ignoringOtherApps: true)
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+
+        var failure: NSDictionary?
+        let command = "do shell script \"killall -9 replayd\" with administrator privileges"
+        NSAppleScript(source: command)?.executeAndReturnError(&failure)
+        if let failure {
+            Log.error("cannot restart the capture service: \(failure)")
+            return
+        }
+
+        Log.info("restarted the capture service")
+        AppModel.shared.controller.restartCaptures()
     }
 
     @MainActor
@@ -158,6 +192,8 @@ extension AppDelegate: NSMenuDelegate {
             if let profiles = menu.item(at: 3)?.submenu {
                 refreshProfiles(in: profiles)
             }
+            menu.item(at: 5)?.title = model.controller.isCaptureStalled
+                ? "Restart Screen Capture (no frames)…" : "Restart Screen Capture…"
         }
     }
 }

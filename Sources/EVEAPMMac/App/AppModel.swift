@@ -17,6 +17,7 @@ final class AppModel: ObservableObject {
 
     private var cancellables = Set<AnyCancellable>()
     private var permissionTimer: Timer?
+    private var configuredHotkeys: [Hotkey] = []
 
     private init() {
         let config = ConfigStore()
@@ -30,11 +31,17 @@ final class AppModel: ObservableObject {
         Log.info("starting with screen recording \(hasScreenRecording), accessibility \(hasAccessibility)")
 
         hotkeys.onAction = { [weak self] action in self?.perform(action) }
-        Publishers.CombineLatest(config.$settings.map(\.hotkeys), config.$globalHotkeys)
-            .map { $0 + $1 }
-            .removeDuplicates()
-            .sink { [weak self] hotkeys in self?.hotkeys.apply(hotkeys) }
+        Publishers.CombineLatest3(config.$settings.map(\.hotkeys),
+                                  config.$globalHotkeys,
+                                  config.$settings.map(\.hotkeysRequireEVEFocus))
+            .removeDuplicates { $0 == $1 }
+            .sink { [weak self] hotkeys, global, _ in
+                self?.configuredHotkeys = hotkeys + global
+                self?.refreshHotkeyRegistration()
+            }
             .store(in: &cancellables)
+
+        watchFrontmostApplication()
 
         config.$settings
             .removeDuplicates()
@@ -48,16 +55,54 @@ final class AppModel: ObservableObject {
     }
 
     func perform(_ action: HotkeyAction) {
+        guard isHotkeyContext else { return }
+
         switch action {
         case .activate(let character): controller.activate(character: character)
         case .cycleForward: controller.cycle(forward: true)
         case .cycleBackward: controller.cycle(forward: false)
         case .toggleThumbnails: controller.setThumbnailsHidden(!controller.areThumbnailsHidden)
-        case .toggleHotkeys: hotkeys.toggleSuspended()
+        case .toggleHotkeys: toggleHotkeySuspension()
         case .switchProfile(let name): config.switchTo(name)
         case .cycleProfileForward: config.cycleProfile(forward: true)
         case .cycleProfileBackward: config.cycleProfile(forward: false)
         }
+    }
+
+    func toggleHotkeySuspension() {
+        hotkeys.toggleSuspended()
+        refreshHotkeyRegistration()
+    }
+
+    func setHotkeysSuspended(_ suspended: Bool) {
+        suspended ? hotkeys.suspend() : hotkeys.resume()
+        refreshHotkeyRegistration()
+    }
+
+    /// A registered shortcut is swallowed system-wide, so restricting shortcuts
+    /// to EVE cannot mean ignoring them when they fire: they are unregistered
+    /// while another application is in front, and the key reaches that
+    /// application untouched.
+    private func refreshHotkeyRegistration() {
+        hotkeys.apply(isHotkeyContext && !hotkeys.isSuspended ? configuredHotkeys : [])
+    }
+
+    private func watchFrontmostApplication() {
+        let center = NSWorkspace.shared.notificationCenter
+        for name in [NSWorkspace.didActivateApplicationNotification,
+                     NSWorkspace.didTerminateApplicationNotification] {
+            center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.refreshHotkeyRegistration() }
+            }
+        }
+    }
+
+    private var isHotkeyContext: Bool {
+        guard config.settings.hotkeysRequireEVEFocus else { return true }
+        guard let bundle = NSWorkspace.shared.frontmostApplication?.bundleIdentifier else {
+            return false
+        }
+        return config.settings.clientBundleIdentifiers.contains(bundle)
     }
 
     /// The grants can be given while the app runs, and there is no notification

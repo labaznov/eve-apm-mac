@@ -116,6 +116,25 @@ final class ThumbnailController {
         activate(clients[next])
     }
 
+    /// True when every running capture has gone quiet, which is what a wedged
+    /// window server looks like from here.
+    var isCaptureStalled: Bool {
+        let running = thumbnails.values.filter(\.stream.isRunning)
+        return !running.isEmpty && running.allSatisfy(\.stream.isStalled)
+    }
+
+    /// Tears the captures down and builds them again, for use after the window
+    /// server has been restarted underneath them.
+    func restartCaptures() {
+        for id in thumbnails.keys {
+            guard let stream = thumbnails[id]?.stream else { continue }
+            Task { [weak self] in
+                await stream.stop()
+                self?.restart(id)
+            }
+        }
+    }
+
     func setThumbnailsHidden(_ hidden: Bool) {
         thumbnailsHidden = hidden
         refreshVisibility()
