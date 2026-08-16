@@ -60,6 +60,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func buildMenu() -> NSMenu {
         let menu = NSMenu()
         menu.delegate = self
+        // The items are enabled by hand, so "Quit EVE Clients" can go grey when
+        // there is nothing to quit.
+        menu.autoenablesItems = false
 
         menu.addItem(withTitle: "Settings…", action: #selector(openSettings), keyEquivalent: ",")
             .target = self
@@ -74,6 +77,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         menu.addItem(.separator())
         menu.addItem(withTitle: "Help", action: #selector(openHelp), keyEquivalent: "?")
+            .target = self
+        menu.addItem(withTitle: "Quit EVE Clients…", action: #selector(quitClients),
+                     keyEquivalent: "")
             .target = self
         menu.addItem(withTitle: "Restart Screen Capture…", action: #selector(restartCapture),
                      keyEquivalent: "")
@@ -134,6 +140,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         NSApp.activate(ignoringOtherApps: true)
         helpWindow?.makeKeyAndOrderFront(nil)
+    }
+
+    /// Closes every running client. Quitting a game session is not something to
+    /// do by a slip of the mouse, so it is confirmed and the clients are asked
+    /// to quit rather than killed.
+    @MainActor
+    @objc private func quitClients() {
+        let clients = AppModel.shared.runningClients
+        guard !clients.isEmpty else { return }
+
+        let alert = NSAlert()
+        alert.messageText = clients.count == 1
+            ? "Quit the EVE client?"
+            : "Quit all \(clients.count) EVE clients?"
+        alert.informativeText = "Each client is asked to quit as if you had chosen Quit in it. "
+            + "Anything the game has not saved yet is up to the game."
+        alert.addButton(withTitle: "Quit Clients")
+        alert.addButton(withTitle: "Cancel")
+        NSApp.activate(ignoringOtherApps: true)
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+
+        AppModel.shared.quitAllClients()
     }
 
     @MainActor
@@ -213,7 +241,11 @@ extension AppDelegate: NSMenuDelegate {
             if let profiles = menu.item(at: 3)?.submenu {
                 refreshProfiles(in: profiles)
             }
-            menu.item(at: 6)?.title = model.controller.isCaptureStalled
+            let clients = model.registry.clients.count
+            menu.item(at: 6)?.title = clients == 1
+                ? "Quit the EVE Client…" : "Quit \(clients) EVE Clients…"
+            menu.item(at: 6)?.isEnabled = clients > 0
+            menu.item(at: 7)?.title = model.controller.isCaptureStalled
                 ? "Restart Screen Capture (no frames)…" : "Restart Screen Capture…"
         }
     }

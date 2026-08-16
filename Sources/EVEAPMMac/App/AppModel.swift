@@ -69,6 +69,24 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// Every EVE client the app is tracking, one entry per process.
+    var runningClients: [NSRunningApplication] {
+        let pids = Set(registry.clients.map(\.pid))
+        return pids.compactMap { NSRunningApplication(processIdentifier: $0) }
+    }
+
+    /// Asks each client to quit the way the Quit menu item would, so the game
+    /// closes its session itself rather than being killed under it.
+    @discardableResult
+    func quitAllClients() -> Int {
+        let clients = runningClients
+        for client in clients {
+            client.terminate()
+        }
+        Log.info("asked \(clients.count) client(s) to quit")
+        return clients.count
+    }
+
     func toggleHotkeySuspension() {
         hotkeys.toggleSuspended()
         refreshHotkeyRegistration()
