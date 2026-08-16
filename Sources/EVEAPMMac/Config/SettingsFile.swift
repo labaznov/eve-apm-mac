@@ -36,14 +36,31 @@ struct AppState: Codable, Sendable, Equatable {
     var globalHotkeys: [Hotkey] = []
 }
 
-/// Where the settings live on disk.
+/// Where the settings live on disk. A `settings.json` sitting next to the app
+/// wins over the one in Application Support, so a copy of the app can be
+/// carried around with its settings beside it.
 struct ProfileLayout: Sendable {
     static let defaultProfile = "default"
+    static let portableFileName = "settings.json"
 
     let root: URL
+    let isPortable: Bool
 
-    init(root: URL = ProfileLayout.applicationSupport()) {
+    init(root: URL, isPortable: Bool = false) {
         self.root = root
+        self.isPortable = isPortable
+    }
+
+    /// Picks the folder to work in: beside the app when a settings file is
+    /// there, otherwise the usual place under the user's Library.
+    init() {
+        let beside = ProfileLayout.besideTheApp()
+        if FileManager.default.fileExists(
+            atPath: beside.appendingPathComponent(ProfileLayout.portableFileName).path) {
+            self.init(root: beside, isPortable: true)
+        } else {
+            self.init(root: ProfileLayout.applicationSupport())
+        }
     }
 
     static func applicationSupport() -> URL {
@@ -51,12 +68,20 @@ struct ProfileLayout: Sendable {
             .appendingPathComponent("EVE-APM-Mac", isDirectory: true)
     }
 
+    static func besideTheApp() -> URL {
+        Bundle.main.bundleURL.deletingLastPathComponent()
+    }
+
     var profilesDirectory: URL { root.appendingPathComponent("profiles", isDirectory: true) }
     var stateURL: URL { root.appendingPathComponent("state.json") }
-    var legacySettingsURL: URL { root.appendingPathComponent("settings.json") }
+    var legacySettingsURL: URL { root.appendingPathComponent(ProfileLayout.portableFileName) }
 
+    /// In a portable folder the file the user put there is the default profile
+    /// itself, so it keeps its name and its place.
     func profileURL(_ name: String) -> URL {
-        profilesDirectory.appendingPathComponent("\(ProfileLayout.sanitize(name)).json")
+        let clean = ProfileLayout.sanitize(name)
+        if isPortable, clean == ProfileLayout.defaultProfile { return legacySettingsURL }
+        return profilesDirectory.appendingPathComponent("\(clean).json")
     }
 
     /// A profile name becomes a file name, so anything that would break a path
@@ -73,16 +98,19 @@ struct ProfileLayout: Sendable {
     func names() -> [String] {
         let contents = try? FileManager.default.contentsOfDirectory(
             at: profilesDirectory, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles])
-        let found = (contents ?? [])
+        var found = Set((contents ?? [])
             .filter { $0.pathExtension == "json" }
-            .map { $0.deletingPathExtension().lastPathComponent }
-            .sorted()
-        return found.isEmpty ? [ProfileLayout.defaultProfile] : found
+            .map { $0.deletingPathExtension().lastPathComponent })
+        if isPortable {
+            found.insert(ProfileLayout.defaultProfile)
+        }
+        return found.isEmpty ? [ProfileLayout.defaultProfile] : found.sorted()
     }
 
     /// Moves a pre-profile settings file into the default profile, so an
     /// upgrade keeps the arrangement the user already had.
     func migrateLegacySettings() {
+        guard !isPortable else { return }
         let manager = FileManager.default
         let target = profileURL(ProfileLayout.defaultProfile)
         guard manager.fileExists(atPath: legacySettingsURL.path),

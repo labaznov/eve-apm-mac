@@ -18,6 +18,7 @@ struct ThumbnailAppearance: Equatable {
 final class ThumbnailView: NSView {
     var onActivate: (() -> Void)?
     var onMoved: ((CGPoint) -> Void)?
+    var onMoveEnded: (() -> Void)?
     var isDraggable = true
 
     private let captureLayer: CALayer
@@ -128,12 +129,14 @@ final class ThumbnailView: NSView {
         dragOrigin = location
         window.setFrameOrigin(CGPoint(x: window.frame.origin.x + delta.x,
                                       y: window.frame.origin.y + delta.y))
+        onMoved?(window.frame.origin)
     }
 
     override func mouseUp(with event: NSEvent) {
         defer { dragOrigin = nil }
         if didDrag {
             if let window { onMoved?(window.frame.origin) }
+            onMoveEnded?()
         } else {
             onActivate?()
         }

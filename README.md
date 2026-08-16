@@ -92,13 +92,47 @@ stops asking; plain *Allow* only covers that one build.
 - `eveapm://profile/<name>` — switch profile
 - `eveapm://hotkey/suspend`, `eveapm://hotkey/resume`
 - `eveapm://thumbnail/hide`, `eveapm://thumbnail/show`
-- `eveapm://config/open`
+- `eveapm://config/open`, `eveapm://help/open`
 
-## Where things are kept
+## Settings and their file
 
-Profiles live in `~/Library/Application Support/EVE-APM-Mac/profiles/<name>.json`
-and the chosen profile in `state.json` beside them. Logs are read from
-`~/Documents/EVE/logs`, which macOS may ask you to allow the first time.
+**Help** in the menu documents the settings file in full: every field, its
+range, and the rules below. It also imports a Windows profile and reveals the
+active file in Finder.
+
+Profiles are plain JSON in
+`~/Library/Application Support/EVE-APM-Mac/profiles/<name>.json`, with the
+chosen profile and the profile-switching shortcuts in `state.json` beside them.
+Anything absent from a file falls back to its default, and values outside their
+range are pulled back into it when read.
+
+**Carrying settings with the app.** A `settings.json` placed *next to the app*
+wins over the one in Application Support. The app then works out of that folder:
+it reads that file at launch, writes changes back into it, and looks for further
+profiles in a `profiles` folder beside it. Remove the file and it goes back to
+Application Support; nothing is copied or moved between the two.
+
+**Thumbnail positions** are the bottom-left corner of the thumbnail, in the
+coordinate space macOS uses for windows.
+
+- A position is written the instant a thumbnail moves and saved to disk as soon
+  as you let go, so an arrangement is never lost to a crash or a forced quit.
+- A remembered position is used exactly as written, as long as the thumbnail
+  fits entirely on one of the displays attached right now.
+- A position that lands off every display is dropped, the thumbnail is placed
+  where it can be seen, and the new position is written back.
+- Plugging a display in or out re-checks every thumbnail by the same rule.
+
+**Coming from Windows.** EVE-APM Preview for Windows does not store JSON: it
+writes Qt INI files, one per profile, next to its executable. *Import a Windows
+profile…* in Help translates one into a profile here — sizes, opacity, colours,
+auto-minimise, overlays, log and alert settings, per-character border colours
+and thumbnail positions, with the positions flipped from Windows' top-left
+origin to the bottom-left one macOS uses. Shortcuts are not carried over; the
+two systems name keys differently.
+
+Logs are read from `~/Documents/EVE/logs`, which macOS may ask you to allow the
+first time.
 
 The one thing the Windows original does that this does not is track a mining
 cycle by its ticks; the events that end a cycle are reported.

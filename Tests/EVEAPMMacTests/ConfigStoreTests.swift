@@ -93,6 +93,47 @@ final class ConfigStoreTests: XCTestCase {
         XCTAssertEqual(ConfigStore(layout: layout).globalHotkeys, first.globalHotkeys)
     }
 
+    func testAPortableFolderUsesTheFileBesideTheApp() throws {
+        let layout = ProfileLayout(root: try temporaryLayout().root, isPortable: true)
+        XCTAssertEqual(layout.profileURL("default").lastPathComponent, "settings.json")
+    }
+
+    func testAPortableFolderKeepsOtherProfilesTogether() throws {
+        let layout = ProfileLayout(root: try temporaryLayout().root, isPortable: true)
+        XCTAssertEqual(layout.profileURL("mining").deletingLastPathComponent().lastPathComponent,
+                       "profiles")
+    }
+
+    func testAPortableFolderAlwaysOffersTheDefaultProfile() throws {
+        let layout = ProfileLayout(root: try temporaryLayout().root, isPortable: true)
+        XCTAssertEqual(layout.names(), ["default"])
+    }
+
+    func testAPortableFileIsLeftWhereTheUserPutIt() throws {
+        let root = try temporaryLayout().root
+        let layout = ProfileLayout(root: root, isPortable: true)
+        try SettingsFile.save(Settings(), to: layout.legacySettingsURL)
+        layout.migrateLegacySettings()
+        XCTAssertTrue(FileManager.default.fileExists(atPath: layout.legacySettingsURL.path))
+    }
+
+    func testAPortableFileIsReadAsTheProfile() throws {
+        let root = try temporaryLayout().root
+        let layout = ProfileLayout(root: root, isPortable: true)
+        var portable = Settings()
+        portable.thumbnailWidth = 199
+        try SettingsFile.save(portable, to: layout.legacySettingsURL)
+        XCTAssertEqual(ConfigStore(layout: layout).settings.thumbnailWidth, 199)
+    }
+
+    func testAnImportedProfileBecomesItsOwnProfile() throws {
+        let store = ConfigStore(layout: try temporaryLayout())
+        var imported = Settings()
+        imported.thumbnailWidth = 404
+        store.adopt(imported, asProfile: "from-windows")
+        XCTAssertEqual(store.currentProfile, "from-windows")
+    }
+
     func testSettingsFromBeforeProfilesAreAdopted() throws {
         let layout = try temporaryLayout()
         var legacy = Settings()

@@ -60,6 +60,12 @@ final class ThumbnailController {
             .store(in: &cancellables)
 
         logs.onAlert = { [weak self] character, alert in self?.raise(alert, for: character) }
+
+        NotificationCenter.default.addObserver(
+            forName: NSApplication.didChangeScreenParametersNotification,
+            object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.screensChanged() }
+            }
     }
 
     // MARK: - Alerts
@@ -172,8 +178,9 @@ final class ThumbnailController {
         }
         view.onMoved = { [weak self] origin in
             guard let self, let thumbnail = thumbnails[id] else { return }
-            config.settings.positions[thumbnail.client.label] = StoredPoint(origin)
+            remember(origin, of: thumbnail.client)
         }
+        view.onMoveEnded = { [weak self] in self?.config.flush() }
         stream.onFailure = { [weak self] in
             Task { @MainActor in self?.restart(id) }
         }
@@ -240,12 +247,9 @@ final class ThumbnailController {
             panel.setContentSize(size)
         }
         if !thumbnail.isPlaced {
-            let origin = settings.positions[thumbnail.client.label]?.cgPoint
-                ?? defaultOrigin(for: panel, index: thumbnails.count - 1)
-            panel.setFrameOrigin(origin)
+            place(panel, of: thumbnail.client, size: size)
             thumbnail.isPlaced = true
         }
-        panel.ensureOnScreen()
         panel.setAlwaysOnTop(settings.alwaysOnTop)
         panel.alphaValue = settings.opacity
         panel.ignoresMouseEvents = false
@@ -267,6 +271,43 @@ final class ThumbnailController {
             }
         } else {
             thumbnails[id] = thumbnail
+        }
+    }
+
+    /// Puts a thumbnail where it was left. A remembered position is honoured
+    /// untouched as long as it lands on a display attached now; one that does
+    /// not is dropped and replaced with a fresh position, which is written back
+    /// straight away so the file never holds a place nobody can reach.
+    private func place(_ panel: ThumbnailPanel, of client: EVEClient, size: CGSize) {
+        let remembered = settings.positions[client.label]?.cgPoint
+        if let remembered, ScreenGeometry.fits(CGRect(origin: remembered, size: size)) {
+            panel.setFrameOrigin(remembered)
+            return
+        }
+
+        if remembered != nil {
+            Log.info("dropped an off-screen position for \(client.label)")
+        }
+        panel.setFrameOrigin(defaultOrigin(for: panel, index: thumbnails.count - 1))
+        remember(panel.frame.origin, of: client)
+    }
+
+    /// Positions are written the moment a thumbnail moves, and pushed to disk
+    /// at once, so a crash or a forced quit cannot lose an arrangement.
+    private func remember(_ origin: CGPoint, of client: EVEClient) {
+        let stored = StoredPoint(origin)
+        guard settings.positions[client.label] != stored else { return }
+        settings.positions[client.label] = stored
+        config.settings.positions[client.label] = stored
+    }
+
+    /// Re-checks every thumbnail against the displays, for when a monitor is
+    /// plugged in or unplugged.
+    private func screensChanged() {
+        for (id, thumbnail) in thumbnails {
+            guard !ScreenGeometry.fits(thumbnail.panel.frame) else { continue }
+            thumbnails[id]?.isPlaced = false
+            layout(id)
         }
     }
 

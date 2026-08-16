@@ -9,6 +9,7 @@ enum URLCommand: Equatable {
     case hideThumbnails
     case showThumbnails
     case openSettings
+    case openHelp
     case switchProfile(name: String)
 
     static let scheme = "eveapm"
@@ -29,6 +30,7 @@ enum URLCommand: Equatable {
         case ("thumbnail", "hide"): self = .hideThumbnails
         case ("thumbnail", "show"): self = .showThumbnails
         case ("config", "open"): self = .openSettings
+        case ("help", "open"): self = .openHelp
         default: return nil
         }
     }

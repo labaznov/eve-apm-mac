@@ -1,3 +1,4 @@
+import AppKit
 import Combine
 import Foundation
 
@@ -98,6 +99,30 @@ final class ConfigStore: ObservableObject {
             settings = SettingsFile.load(from: layout.profileURL(currentProfile))
         }
         writeState()
+    }
+
+    /// Takes settings from elsewhere — an imported Windows profile — and makes
+    /// them a profile of their own, leaving the current one alone.
+    func adopt(_ settings: Settings, asProfile name: String) {
+        let target = ProfileLayout.sanitize(name)
+        if profiles.contains(target) {
+            switchTo(target)
+            self.settings = settings
+            flush()
+        } else {
+            createProfile(named: target, copyingCurrent: false)
+            self.settings = settings
+            flush()
+        }
+    }
+
+    var activeProfilePath: String {
+        layout.profileURL(currentProfile).path
+    }
+
+    func revealInFinder() {
+        let url = layout.profileURL(currentProfile)
+        NSWorkspace.shared.activateFileViewerSelecting([url])
     }
 
     // MARK: - Persistence

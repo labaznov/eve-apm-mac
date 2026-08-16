@@ -5,6 +5,7 @@ import SwiftUI
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem?
     private var settingsWindow: NSWindow?
+    private var helpWindow: NSWindow?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -72,6 +73,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(profiles)
 
         menu.addItem(.separator())
+        menu.addItem(withTitle: "Help", action: #selector(openHelp), keyEquivalent: "?")
+            .target = self
         menu.addItem(withTitle: "Restart Screen Capture…", action: #selector(restartCapture),
                      keyEquivalent: "")
             .target = self
@@ -91,6 +94,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case .hideThumbnails: model.controller.setThumbnailsHidden(true)
         case .showThumbnails: model.controller.setThumbnailsHidden(false)
         case .openSettings: openSettings()
+        case .openHelp: openHelp()
         case .switchProfile(let name): model.config.switchTo(name)
         }
     }
@@ -113,6 +117,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         NSApp.activate(ignoringOtherApps: true)
         settingsWindow?.makeKeyAndOrderFront(nil)
+    }
+
+    @MainActor
+    @objc private func openHelp() {
+        if helpWindow == nil {
+            let window = NSWindow(contentRect: CGRect(x: 0, y: 0, width: 620, height: 640),
+                                  styleMask: [.titled, .closable, .miniaturizable, .resizable],
+                                  backing: .buffered,
+                                  defer: false)
+            window.title = "EVE-APM Mac Help"
+            window.contentViewController = NSHostingController(rootView: HelpView())
+            window.center()
+            window.isReleasedWhenClosed = false
+            helpWindow = window
+        }
+        NSApp.activate(ignoringOtherApps: true)
+        helpWindow?.makeKeyAndOrderFront(nil)
     }
 
     @MainActor
@@ -192,7 +213,7 @@ extension AppDelegate: NSMenuDelegate {
             if let profiles = menu.item(at: 3)?.submenu {
                 refreshProfiles(in: profiles)
             }
-            menu.item(at: 5)?.title = model.controller.isCaptureStalled
+            menu.item(at: 6)?.title = model.controller.isCaptureStalled
                 ? "Restart Screen Capture (no frames)…" : "Restart Screen Capture…"
         }
     }
