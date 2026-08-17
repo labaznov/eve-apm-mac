@@ -54,6 +54,47 @@ enum BorderStyle: String, Codable, Sendable, Equatable, CaseIterable {
     }
 }
 
+/// Where a notice sits on a thumbnail.
+enum AlertPosition: String, Codable, Sendable, Equatable, CaseIterable {
+    case top
+    case middle
+    case bottom
+
+    var title: String { rawValue.capitalized }
+}
+
+/// How the thumbnails of clients with no character yet are arranged.
+enum StackMode: String, Codable, Sendable, Equatable, CaseIterable {
+    case row
+    case column
+    case pile
+
+    var title: String {
+        switch self {
+        case .row: "In a row"
+        case .column: "In a column"
+        case .pile: "On top of each other"
+        }
+    }
+}
+
+/// A rectangle as it survives a round trip through the settings file.
+struct StoredRect: Codable, Sendable, Equatable {
+    var x: Double
+    var y: Double
+    var width: Double
+    var height: Double
+
+    init(_ rect: CGRect) {
+        x = rect.origin.x
+        y = rect.origin.y
+        width = rect.width
+        height = rect.height
+    }
+
+    var cgRect: CGRect { CGRect(x: x, y: y, width: width, height: height) }
+}
+
 /// A named set of characters with shortcuts that step through just them, for
 /// the squads a multiboxer switches between as a unit.
 struct CycleGroup: Codable, Sendable, Equatable, Hashable, Identifiable {
@@ -163,6 +204,38 @@ struct Settings: Codable, Sendable, Equatable {
     /// because Singularity and third-party launchers ship their own bundles.
     var clientBundleIdentifiers: [String] = ["com.ccpgames.eveonline"]
 
+    /// Take the thumbnails away while another application is in front, so they
+    /// do not sit over the work they are not part of.
+    var hideThumbnailsWhenEVEUnfocused: Bool = false
+    /// How long the other application has to stay in front before that happens,
+    /// so a glance at another window does not make everything flicker.
+    var eveFocusDebounce: Double = 0.4
+    /// Characters whose thumbnail is never shown.
+    var hiddenCharacters: [String] = []
+    /// Characters that "Quit EVE Clients" leaves running.
+    var neverClose: [String] = []
+
+    var showNotLoggedInClients: Bool = true
+    var notLoggedInBadge: Bool = true
+    var notLoggedInStack: StackMode = .column
+    /// Where that stack starts; nothing means near the top left of the screen.
+    var notLoggedInAnchor: StoredPoint?
+
+    var alertColor: RGBAColor = RGBAColor(red: 1.0, green: 0.72, blue: 0.15, alpha: 1.0)
+    var alertPosition: AlertPosition = .middle
+
+    /// Put a client's own window back where it was when its character logs in.
+    var rememberClientWindows: Bool = false
+    var clientWindowFrames: [String: StoredRect] = [:]
+
+    /// Seconds without a mining tick before mining counts as stopped.
+    var miningTimeout: Double = 30
+
+    /// Switch as the button goes down rather than when it comes up.
+    var switchOnMouseDown: Bool = false
+    /// Drag thumbnails with the right button, leaving the left one to switch.
+    var dragWithRightButton: Bool = false
+
     var showSystemName: Bool = true
     var monitorChatLogs: Bool = true
     var monitorGameLogs: Bool = true
@@ -196,6 +269,8 @@ struct Settings: Codable, Sendable, Equatable {
         copy.inactiveBorderWidth = min(max(inactiveBorderWidth, 0), 12)
         copy.snapDistance = min(max(snapDistance, 0), 60)
         copy.labelFontSize = min(max(labelFontSize, 8), 32)
+        copy.eveFocusDebounce = min(max(eveFocusDebounce, 0), 10)
+        copy.miningTimeout = min(max(miningTimeout, 5), 600)
         copy.characterThumbnailWidths = characterThumbnailWidths.mapValues {
             min(max($0, Settings.thumbnailWidthRange.lowerBound),
                 Settings.thumbnailWidthRange.upperBound)
@@ -239,6 +314,16 @@ struct Settings: Codable, Sendable, Equatable {
 
     func borderWidth(isActive: Bool) -> Double {
         isActive ? borderWidth : inactiveBorderWidth
+    }
+
+    func shows(_ client: EVEClient) -> Bool {
+        if let character = client.character { return !hiddenCharacters.contains(character) }
+        return showNotLoggedInClients
+    }
+
+    func closes(_ character: String?) -> Bool {
+        guard let character else { return true }
+        return !neverClose.contains(character)
     }
 
     func group(named name: String) -> CycleGroup? {

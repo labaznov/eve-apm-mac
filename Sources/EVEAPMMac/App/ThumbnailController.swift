@@ -14,6 +14,9 @@ final class ThumbnailController {
         var client: EVEClient
         var pixelSize: CGSize
         var isPlaced: Bool
+        /// Whether this session's own window has already been put back where it
+        /// was, which happens once, when the character becomes known.
+        var didRestoreWindow: Bool = false
     }
 
     private let registry: ClientRegistry
@@ -30,6 +33,10 @@ final class ThumbnailController {
 
     private var alerts: [String: Alert] = [:]
     private var alertTasks: [String: Task<Void, Never>] = [:]
+    /// True while another application has been in front long enough for the
+    /// thumbnails to step aside.
+    private var isOutsideEVE = false
+    private var focusTask: Task<Void, Never>?
 
     init(registry: ClientRegistry, config: ConfigStore, logs: LogMonitor) {
         self.registry = registry
@@ -93,12 +100,21 @@ final class ThumbnailController {
     private func appearance(for client: EVEClient) -> ThumbnailAppearance {
         let isActive = client.pid == frontmostPID
         let character = client.character
+        let name: String? = if client.character == nil, settings.notLoggedInBadge {
+            "Not logged in"
+        } else if settings.showCharacterName {
+            client.label
+        } else {
+            nil
+        }
         return ThumbnailAppearance(
-            name: settings.showCharacterName ? client.label : nil,
+            name: name,
             namePosition: settings.characterNamePosition,
             system: settings.showSystemName ? character.flatMap { logs.systems[$0] } : nil,
             systemPosition: settings.systemNamePosition,
             alert: character.flatMap { alerts[$0] }?.text,
+            alertColor: settings.alertColor,
+            alertPosition: settings.alertPosition,
             labelColor: settings.labelColor,
             systemColor: settings.systemNameColor,
             fontSize: settings.labelFontSize,
@@ -246,6 +262,7 @@ final class ThumbnailController {
         thumbnail.client = client
         if characterChanged { thumbnail.isPlaced = false }
         thumbnails[client.windowID] = thumbnail
+        rememberOrRestoreWindow(of: client.windowID)
         layout(client.windowID)
         if aspectChanged {
             startCapture(client.windowID)
@@ -290,11 +307,13 @@ final class ThumbnailController {
             panel.setContentSize(size)
         }
         if !thumbnail.isPlaced {
-            // Before a character is known the thumbnail cascades into a free
-            // spot; once it is, it moves to that character's place if it has
-            // one and stays put if it does not.
-            let fallback = panel.isVisible ? panel.frame.origin
-                                           : defaultOrigin(for: panel, index: thumbnails.count - 1)
+            // Before a character is known the thumbnail joins the stack of
+            // clients waiting on the login screen; once it is, it moves to that
+            // character's place if it has one and stays put if it does not.
+            let fallback = thumbnail.client.character == nil
+                ? stackOrigin(for: thumbnail.client, size: size)
+                : (panel.isVisible ? panel.frame.origin
+                                   : defaultOrigin(for: panel, index: thumbnails.count - 1))
             place(panel, of: thumbnail.client, size: size, fallback: fallback)
             thumbnail.isPlaced = true
         }
@@ -303,6 +322,8 @@ final class ThumbnailController {
         panel.ignoresMouseEvents = false
 
         thumbnail.view.isDraggable = !settings.lockPositions
+        thumbnail.view.switchesOnMouseDown = settings.switchOnMouseDown
+        thumbnail.view.dragsWithRightButton = settings.dragWithRightButton
         thumbnail.view.apply(appearance(for: thumbnail.client))
 
         let scale = panel.screen?.backingScaleFactor ?? 2
@@ -354,6 +375,31 @@ final class ThumbnailController {
         config.settings.positions[character] = stored
     }
 
+    /// Keeps a client's own window where the character left it. The window is
+    /// put back once, when the character becomes known; after that the frame the
+    /// client actually has is what gets remembered, so moving it by hand sticks.
+    private func rememberOrRestoreWindow(of id: CGWindowID) {
+        guard settings.rememberClientWindows,
+              var thumbnail = thumbnails[id],
+              let character = thumbnail.client.character else { return }
+
+        if !thumbnail.didRestoreWindow {
+            thumbnail.didRestoreWindow = true
+            thumbnails[id] = thumbnail
+            if let stored = settings.clientWindowFrames[character]?.cgRect,
+               ScreenGeometry.fits(stored), stored != thumbnail.client.frame {
+                Log.info("putting \(character)'s window back to \(stored)")
+                WindowActivator.setFrame(stored, of: thumbnail.client)
+                return
+            }
+        }
+
+        let frame = StoredRect(thumbnail.client.frame)
+        guard settings.clientWindowFrames[character] != frame else { return }
+        settings.clientWindowFrames[character] = frame
+        config.settings.clientWindowFrames[character] = frame
+    }
+
     /// What a dragged thumbnail lines up against: its neighbours and the usable
     /// area of every display.
     private func snapTargets(excluding id: CGWindowID) -> [CGRect] {
@@ -371,6 +417,22 @@ final class ThumbnailController {
         }
     }
 
+    /// Where a client with no character sits: at the anchor, offset by how many
+    /// of them were found before it.
+    private func stackOrigin(for client: EVEClient, size: CGSize) -> CGPoint {
+        let waiting = registry.clients.filter { $0.character == nil }
+        let index = waiting.firstIndex { $0.windowID == client.windowID } ?? 0
+        let anchor = settings.notLoggedInAnchor?.cgPoint ?? defaultAnchor(size: size)
+        return StackLayout.position(index: index, mode: settings.notLoggedInStack,
+                                    anchor: anchor, size: size)
+    }
+
+    private func defaultAnchor(size: CGSize) -> CGPoint {
+        guard let screen = NSScreen.main else { return .zero }
+        return CGPoint(x: screen.visibleFrame.maxX - size.width - 40,
+                       y: screen.visibleFrame.maxY - size.height - 40)
+    }
+
     private func defaultOrigin(for panel: ThumbnailPanel, index: Int) -> CGPoint {
         guard let screen = panel.screen ?? NSScreen.main else { return .zero }
         let step: CGFloat = 24
@@ -381,7 +443,9 @@ final class ThumbnailController {
     private func refreshVisibility() {
         for (id, thumbnail) in thumbnails {
             let isActive = thumbnail.client.pid == frontmostPID
-            let visible = !thumbnailsHidden && !(settings.hideActiveThumbnail && isActive)
+            let visible = !thumbnailsHidden && !isOutsideEVE
+                && settings.shows(thumbnail.client)
+                && !(settings.hideActiveThumbnail && isActive)
             if visible {
                 if !thumbnail.panel.isVisible { thumbnail.panel.orderFront(nil) }
             } else if thumbnail.panel.isVisible {
@@ -396,8 +460,41 @@ final class ThumbnailController {
 
     private func frontmostChanged(to pid: pid_t?) {
         frontmostPID = pid
+        watchEVEFocus(pid)
         refreshVisibility()
         scheduleAutoMinimize()
+    }
+
+    /// Hides the thumbnails once another application has held the front for the
+    /// debounce, and brings them straight back when a client returns. Our own
+    /// windows count as part of EVE, so arranging settings does not clear the
+    /// screen you are arranging.
+    private func watchEVEFocus(_ pid: pid_t?) {
+        focusTask?.cancel()
+        guard settings.hideThumbnailsWhenEVEUnfocused else {
+            if isOutsideEVE {
+                isOutsideEVE = false
+                refreshVisibility()
+            }
+            return
+        }
+
+        let ours = ProcessInfo.processInfo.processIdentifier
+        let insideEVE = pid == ours || registry.clients.contains { $0.pid == pid }
+        if insideEVE {
+            guard isOutsideEVE else { return }
+            isOutsideEVE = false
+            refreshVisibility()
+            return
+        }
+
+        let delay = settings.eveFocusDebounce
+        focusTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(delay))
+            guard !Task.isCancelled, let self, !isOutsideEVE else { return }
+            isOutsideEVE = true
+            refreshVisibility()
+        }
     }
 
     private func scheduleAutoMinimize() {

@@ -17,6 +17,9 @@ final class LogMonitor: ObservableObject {
     private var seenAt: [String: Date] = [:]
     private var pollTimer: Timer?
     private var scanTimer: Timer?
+    /// One watchdog per character that is mining, so the moment the ticks stop
+    /// can be reported.
+    private var miningWatchdogs: [String: Task<Void, Never>] = [:]
     private var isRunning = false
 
     private static let activePoll: TimeInterval = 0.5
@@ -44,6 +47,8 @@ final class LogMonitor: ObservableObject {
         pollTimer = nil
         scanTimer = nil
         tails.removeAll()
+        for watchdog in miningWatchdogs.values { watchdog.cancel() }
+        miningWatchdogs.removeAll()
     }
 
     func apply(_ settings: Settings) {
@@ -165,9 +170,32 @@ final class LogMonitor: ObservableObject {
                 record(system: name, for: tail.character, at: at)
             case .alert(let alert):
                 guard raisingAlerts, settings.shows(alert.kind) else { continue }
+                if alert.kind == .miningStopped { stopWatchingMining(tail.character) }
                 onAlert?(tail.character, alert)
+            case .miningTick(let at):
+                guard raisingAlerts else { continue }
+                watchMining(tail.character, since: at)
             }
         }
+    }
+
+    /// EVE writes a line for every mining cycle. Nothing marks the end of a
+    /// session, so the end is the silence after the last one.
+    private func watchMining(_ character: String, since: Date) {
+        miningWatchdogs[character]?.cancel()
+        let timeout = settings.miningTimeout
+        miningWatchdogs[character] = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(timeout))
+            guard !Task.isCancelled, let self, settings.shows(.miningIdle) else { return }
+            miningWatchdogs[character] = nil
+            onAlert?(character, Alert(kind: .miningIdle,
+                                      text: "No mining for \(Int(timeout))s", time: Date()))
+        }
+    }
+
+    private func stopWatchingMining(_ character: String) {
+        miningWatchdogs[character]?.cancel()
+        miningWatchdogs[character] = nil
     }
 
     /// Chat and game logs report the same jump, and a catch-up read replays old

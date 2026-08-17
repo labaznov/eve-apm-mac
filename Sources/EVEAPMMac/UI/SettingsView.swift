@@ -209,6 +209,41 @@ private struct BehaviourSettings: View {
                 .disabled(!settings.autoMinimizeEnabled)
             }
 
+            Section("Focus") {
+                Toggle("Hide the thumbnails while another application is in front",
+                       isOn: $settings.hideThumbnailsWhenEVEUnfocused)
+                LabeledContent("After") {
+                    HStack {
+                        Slider(value: $settings.eveFocusDebounce, in: 0...5, step: 0.1)
+                        Text("\(settings.eveFocusDebounce, specifier: "%.1f") s")
+                            .monospacedDigit().frame(width: 50)
+                    }
+                }
+                .disabled(!settings.hideThumbnailsWhenEVEUnfocused)
+            }
+
+            Section("Clients with no character yet") {
+                Toggle("Show their thumbnails", isOn: $settings.showNotLoggedInClients)
+                Toggle("Label them \"Not logged in\"", isOn: $settings.notLoggedInBadge)
+                    .disabled(!settings.showNotLoggedInClients)
+                Picker("Gather them", selection: $settings.notLoggedInStack) {
+                    ForEach(StackMode.allCases, id: \.self) { Text($0.title).tag($0) }
+                }
+                .disabled(!settings.showNotLoggedInClients)
+            }
+
+            Section("Mouse") {
+                Toggle("Switch as the button goes down", isOn: $settings.switchOnMouseDown)
+                Toggle("Drag with the right button", isOn: $settings.dragWithRightButton)
+            }
+
+            Section("Client windows") {
+                Toggle("Put a client's own window back where its character left it",
+                       isOn: $settings.rememberClientWindows)
+                Text("Uses Accessibility to move and resize the game window when the character logs in.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+
             Section("Never minimise") {
                 if characters.isEmpty {
                     Text("No clients detected").foregroundStyle(.secondary)
@@ -223,6 +258,44 @@ private struct BehaviourSettings: View {
                                 }
                             } else {
                                 settings.neverMinimize.removeAll { $0 == character }
+                            }
+                        }
+                    ))
+                }
+            }
+
+            Section("Never close") {
+                Text("Left running by \"Quit EVE Clients\"")
+                    .font(.caption).foregroundStyle(.secondary)
+                ForEach(characters, id: \.self) { character in
+                    Toggle(character, isOn: Binding(
+                        get: { settings.neverClose.contains(character) },
+                        set: { keep in
+                            if keep {
+                                if !settings.neverClose.contains(character) {
+                                    settings.neverClose.append(character)
+                                }
+                            } else {
+                                settings.neverClose.removeAll { $0 == character }
+                            }
+                        }
+                    ))
+                }
+            }
+
+            Section("Hidden characters") {
+                Text("No thumbnail is shown for these")
+                    .font(.caption).foregroundStyle(.secondary)
+                ForEach(characters, id: \.self) { character in
+                    Toggle(character, isOn: Binding(
+                        get: { settings.hiddenCharacters.contains(character) },
+                        set: { hidden in
+                            if hidden {
+                                if !settings.hiddenCharacters.contains(character) {
+                                    settings.hiddenCharacters.append(character)
+                                }
+                            } else {
+                                settings.hiddenCharacters.removeAll { $0 == character }
                             }
                         }
                     ))
@@ -403,6 +476,22 @@ private struct LogSettings: View {
                 Toggle("Show alerts on thumbnails", isOn: $settings.alertsEnabled)
                 Toggle("Also on the client in use", isOn: $settings.alertsOnActiveClient)
                     .disabled(!settings.alertsEnabled)
+                ColorPicker("Colour", selection: Binding(
+                    get: { Color(settings.alertColor.nsColor) },
+                    set: { settings.alertColor = RGBAColor(NSColor($0)) }
+                ))
+                .disabled(!settings.alertsEnabled)
+                Picker("Shown at", selection: $settings.alertPosition) {
+                    ForEach(AlertPosition.allCases, id: \.self) { Text($0.title).tag($0) }
+                }
+                .disabled(!settings.alertsEnabled)
+                LabeledContent("Mining counts as stopped after") {
+                    HStack {
+                        Slider(value: $settings.miningTimeout, in: 5...300, step: 5)
+                        Text("\(Int(settings.miningTimeout)) s").monospacedDigit().frame(width: 50)
+                    }
+                }
+                .disabled(!settings.alertsEnabled)
                 LabeledContent("Shown for") {
                     HStack {
                         Slider(value: $settings.alertDuration, in: 1...30, step: 1)

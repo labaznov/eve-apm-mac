@@ -60,6 +60,13 @@ stops asking; plain *Allow* only covers that one build.
 - Drag to arrange; positions are remembered per character and can be locked
 - Optional auto-minimise of inactive clients, with a delay and a never-minimise
   list
+- Optionally hide every thumbnail while another application is in front, after a
+  delay of your choosing
+- Clients still on the login screen can be hidden, labelled, and gathered in a
+  row, a column or a pile; individual characters can be hidden for good
+- Optionally switch as the mouse button goes down, and drag with the right button
+  so a click can never move a thumbnail
+- Optionally put a client's own game window back where its character left it
 - Border highlight on the active client, custom border colour per character,
   and a width and style — solid, dashed or dotted — of its own for active and
   inactive
@@ -84,14 +91,15 @@ stops asking; plain *Allow* only covers that one build.
   too, for keys the game itself uses
 
 **Logs**
+- A mining session that goes quiet is reported once the ticks stop arriving
 - The solar system each character sits in, shown on its thumbnail, read from the
   Local channel log and from jumps in the game log
 - Alerts on the thumbnail of a client you are not looking at: fleet invites,
   follow-in-warp and regroup orders, conversation requests, decloaks, finished
   compression runs, broken mining crystals, mining stopped by a depleted
   asteroid or a full hold
-- Each alert kind can be silenced on its own, and the log folders can be pointed
-  elsewhere
+- Each alert kind can be silenced on its own, with a colour and a place on the
+  thumbnail of your choosing, and the log folders can be pointed elsewhere
 
 **Profiles**
 - Any number of named profiles, each with its own sizes, positions, colours,

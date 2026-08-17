@@ -18,6 +18,7 @@ enum AlertKind: String, Sendable, Equatable, CaseIterable {
     case conversation
     case crystalBroke
     case miningStopped
+    case miningIdle
 
     var title: String {
         switch self {
@@ -29,6 +30,7 @@ enum AlertKind: String, Sendable, Equatable, CaseIterable {
         case .conversation: "Conversation request"
         case .crystalBroke: "Crystal broke"
         case .miningStopped: "Mining stopped"
+        case .miningIdle: "Mining went quiet"
         }
     }
 }
@@ -44,4 +46,7 @@ struct Alert: Sendable, Equatable {
 enum LogEvent: Sendable, Equatable {
     case system(name: String, at: Date)
     case alert(Alert)
+    /// A mining tick: on its own it says nothing worth showing, but the moment
+    /// they stop arriving does.
+    case miningTick(at: Date)
 }

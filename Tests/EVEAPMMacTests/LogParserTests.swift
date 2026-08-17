@@ -105,6 +105,16 @@ final class LogParserTests: XCTestCase {
             .miningStopped)
     }
 
+    func testAMiningLineIsATick() {
+        guard case .miningTick? = LogParser.event(
+            from: "[ 2026.08.17 12:00:00 ] (mining) You mined 1 unit of Bright Spodumain",
+            kind: .game, now: epoch) else { return XCTFail("no mining tick") }
+    }
+
+    func testAMiningLineIsWorthParsing() {
+        XCTAssertTrue(LogParser.isInteresting("[ .. ] (mining) You mined", kind: .game))
+    }
+
     func testUnremarkableGameLineHasNoEvent() {
         XCTAssertNil(LogParser.event(
             from: "[ 2026.08.16 21:46:24 ] (hint) Attempting to join a channel",

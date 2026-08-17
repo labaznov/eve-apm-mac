@@ -66,6 +66,40 @@ final class SettingsTests: XCTestCase {
         XCTAssertNotNil(settings.clamped().positions["Client Nine"])
     }
 
+    func testAHiddenCharacterIsNotShown() {
+        var settings = Settings()
+        settings.hiddenCharacters = ["Zar Kai"]
+        XCTAssertFalse(settings.shows(client(character: "Zar Kai")))
+    }
+
+    func testACharacterNotOnTheHiddenListIsShown() {
+        var settings = Settings()
+        settings.hiddenCharacters = ["Zar Kai"]
+        XCTAssertTrue(settings.shows(client(character: "Qrth Vlaadimir")))
+    }
+
+    func testAClientWithNoCharacterFollowsItsOwnSetting() {
+        var settings = Settings()
+        settings.showNotLoggedInClients = false
+        XCTAssertFalse(settings.shows(client(character: nil)))
+    }
+
+    func testAProtectedCharacterIsNotClosed() {
+        var settings = Settings()
+        settings.neverClose = ["Zar Kai"]
+        XCTAssertFalse(settings.closes("Zar Kai"))
+    }
+
+    func testAnyOtherCharacterIsClosed() {
+        var settings = Settings()
+        settings.neverClose = ["Zar Kai"]
+        XCTAssertTrue(settings.closes("Qrth Vlaadimir"))
+    }
+
+    func testAClientWithNoCharacterIsClosed() {
+        XCTAssertTrue(Settings().closes(nil))
+    }
+
     func testClientWithoutCharacterIsMinimised() {
         var settings = Settings()
         settings.autoMinimizeEnabled = true

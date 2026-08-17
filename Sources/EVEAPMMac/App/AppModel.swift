@@ -72,9 +72,11 @@ final class AppModel: ObservableObject {
         }
     }
 
-    /// Every EVE client the app is tracking, one entry per process.
+    /// The EVE clients that "Quit EVE Clients" would close: one entry per
+    /// process, minus the characters the user marked as never to close.
     var runningClients: [NSRunningApplication] {
-        let pids = Set(registry.clients.map(\.pid))
+        let settings = config.settings
+        let pids = Set(registry.clients.filter { settings.closes($0.character) }.map(\.pid))
         return pids.compactMap { NSRunningApplication(processIdentifier: $0) }
     }
 

@@ -21,6 +21,21 @@ enum WindowActivator {
         setBool(window, kAXMinimizedAttribute, true)
     }
 
+    /// Moves and resizes a client's own window, for putting a session back the
+    /// way it was left. Accessibility measures from the top left of the main
+    /// display, the same as the window list this app reads.
+    static func setFrame(_ frame: CGRect, of client: EVEClient) {
+        let app = AXUIElementCreateApplication(client.pid)
+        guard let window = axWindow(of: app, titled: client.title) else { return }
+
+        var origin = CGPoint(x: frame.origin.x, y: frame.origin.y)
+        var size = CGSize(width: frame.width, height: frame.height)
+        guard let position = AXValueCreate(.cgPoint, &origin),
+              let extent = AXValueCreate(.cgSize, &size) else { return }
+        AXUIElementSetAttributeValue(window, kAXPositionAttribute as CFString, position)
+        AXUIElementSetAttributeValue(window, kAXSizeAttribute as CFString, extent)
+    }
+
     static func isMinimized(_ client: EVEClient) -> Bool {
         let app = AXUIElementCreateApplication(client.pid)
         guard let window = axWindow(of: app, titled: client.title) else { return false }

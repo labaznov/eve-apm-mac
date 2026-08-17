@@ -26,7 +26,7 @@ enum LogParser {
             return line.contains("EVE System")
         case .game:
             return line.contains("(notify)") || line.contains("(question)")
-                || line.contains("(None)")
+                || line.contains("(None)") || line.contains("(mining)")
         }
     }
 
@@ -41,6 +41,9 @@ enum LogParser {
     // MARK: - Game log
 
     private static func gameEvent(in line: String, at time: Date) -> LogEvent? {
+        if matches(miningTick, line) {
+            return .miningTick(at: time)
+        }
         if let system = capture(jump, in: line, group: 1) {
             return .system(name: sanitize(system), at: time)
         }
@@ -131,6 +134,7 @@ enum LogParser {
     private static let crystalBroke = regex(#"\(notify\)\s*.+?\s+deactivates due to the destruction of the\s+(.+?)\s+it was fitted with"#)
     private static let asteroidDepleted = regex(#"\(notify\)\s*.+?\s+deactivates as it finds the resource it was harvesting a pale shadow of its former glory"#)
     private static let cargoFull = regex(#"\(notify\)\s*Your\s+.+?\s+has completed operations\.\s+Ship's cargo hold is full"#)
+    private static let miningTick = regex(#"\(mining\)"#)
     private static let htmlTag = regex("<[^>]*>")
     private static let whitespaceRun = regex(#"\s+"#)
 

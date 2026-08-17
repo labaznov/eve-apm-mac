@@ -8,6 +8,8 @@ struct ThumbnailAppearance: Equatable {
     var system: String?
     var systemPosition: OverlayPosition = .top
     var alert: String?
+    var alertColor: RGBAColor = RGBAColor(red: 1.0, green: 0.72, blue: 0.15, alpha: 1.0)
+    var alertPosition: AlertPosition = .middle
     var labelColor: RGBAColor
     var systemColor: RGBAColor = .label
     var fontSize: Double = 12
@@ -30,6 +32,12 @@ final class ThumbnailView: NSView {
     /// with its neighbours.
     var snapping: ((CGRect) -> CGPoint)?
     var isDraggable = true
+    /// Switch as the button goes down rather than when it comes up, for players
+    /// who find the release too slow.
+    var switchesOnMouseDown = false
+    /// Keep the left button for switching and drag with the right one, so a
+    /// click can never move a thumbnail by accident.
+    var dragsWithRightButton = false
 
     private let captureLayer: CALayer
     private let borderLayer = CAShapeLayer()
@@ -64,7 +72,6 @@ final class ThumbnailView: NSView {
             layer?.addSublayer(label)
         }
         alertLayer.backgroundColor = CGColor(gray: 0, alpha: 0.65)
-        alertLayer.foregroundColor = CGColor(srgbRed: 1, green: 0.72, blue: 0.15, alpha: 1)
     }
 
     @available(*, unavailable)
@@ -88,6 +95,7 @@ final class ThumbnailView: NSView {
 
         alertLayer.string = appearance.alert
         alertLayer.isHidden = appearance.alert == nil
+        alertLayer.foregroundColor = appearance.alertColor.cgColor
 
         for label in [nameLayer, systemLayer] {
             label.fontSize = appearance.fontSize
@@ -133,8 +141,13 @@ final class ThumbnailView: NSView {
                               inset: inset, width: width, height: lineHeight)
         systemLayer.frame = row(at: appearance?.systemPosition ?? .top,
                                 inset: inset, width: width, height: lineHeight)
-        alertLayer.frame = CGRect(x: inset, y: (bounds.height - lineHeight * 1.5) / 2,
-                                  width: width, height: lineHeight * 1.5)
+        let alertHeight = lineHeight * 1.5
+        let alertY: CGFloat = switch appearance?.alertPosition ?? .middle {
+        case .top: inset + 2
+        case .middle: (bounds.height - alertHeight) / 2
+        case .bottom: bounds.height - inset - alertHeight - 2
+        }
+        alertLayer.frame = CGRect(x: inset, y: alertY, width: width, height: alertHeight)
 
         // Both labels asked for the same edge; one steps aside.
         if !nameLayer.isHidden, !systemLayer.isHidden,
@@ -158,11 +171,36 @@ final class ThumbnailView: NSView {
     override func mouseDown(with event: NSEvent) {
         dragOrigin = NSEvent.mouseLocation
         didDrag = false
+        if switchesOnMouseDown { onActivate?() }
+    }
+
+    override func rightMouseDown(with event: NSEvent) {
+        guard dragsWithRightButton else { return super.rightMouseDown(with: event) }
+        dragOrigin = NSEvent.mouseLocation
+        didDrag = false
+    }
+
+    override func rightMouseDragged(with event: NSEvent) {
+        guard dragsWithRightButton else { return super.rightMouseDragged(with: event) }
+        drag(to: NSEvent.mouseLocation)
+    }
+
+    override func rightMouseUp(with event: NSEvent) {
+        guard dragsWithRightButton else { return super.rightMouseUp(with: event) }
+        if didDrag, let window {
+            onMoved?(window.frame.origin)
+            onMoveEnded?()
+        }
+        dragOrigin = nil
     }
 
     override func mouseDragged(with event: NSEvent) {
+        guard !dragsWithRightButton else { return }
+        drag(to: NSEvent.mouseLocation)
+    }
+
+    private func drag(to location: CGPoint) {
         guard isDraggable, let origin = dragOrigin, let window else { return }
-        let location = NSEvent.mouseLocation
         let delta = CGPoint(x: location.x - origin.x, y: location.y - origin.y)
         guard didDrag || hypot(delta.x, delta.y) > Self.dragThreshold else { return }
 
@@ -180,7 +218,7 @@ final class ThumbnailView: NSView {
         if didDrag {
             if let window { onMoved?(window.frame.origin) }
             onMoveEnded?()
-        } else {
+        } else if !switchesOnMouseDown {
             onActivate?()
         }
     }
