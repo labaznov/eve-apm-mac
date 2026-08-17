@@ -211,6 +211,42 @@ same app to macOS and keeps the permissions already granted. Publishing an
 ad-hoc build would reset them for everyone, so `make release` refuses unless
 `ALLOW_ADHOC=1` says that is what you meant.
 
+## A request to Apple
+
+This is written by the author of this project, and it is a request rather than a
+complaint.
+
+EVE-APM Mac is free, open source, carries no advertising and sells nothing. It
+does what a small utility should: it shows windows and raises them. To hand it to
+someone else the way macOS wants it handed over, it has to be signed with a
+Developer ID and notarized. I would like to do exactly that.
+
+I cannot. I am in Russia, and enrolling in the Apple Developer Program from here
+is not something I can complete: Apple's payment processing for the country is
+unavailable, so the membership cannot be paid for, and the Developer Enterprise
+Program was closed to developers in Russia in February 2025. I understand these
+measures are not aimed at me, and that Apple has legal obligations it must meet.
+I am not asking Apple to set any of them aside.
+
+What I am asking for is guidance. If there is a lawful route for an individual
+developer in this position — a permitted way to enrol and pay, a jurisdiction or
+an intermediary Apple can point to, an identity and sanctions check I can submit
+myself to, anything at all — I would be glad to follow it and to provide whatever
+verification is asked of me.
+
+And if there is no such route, I would ask Apple to consider one for cases like
+this. The result of the current situation is not that this application stops
+existing; it is that everyone who installs it is walked through **Privacy &
+Security → Open Anyway**. That teaches people to click past Gatekeeper, which
+serves nobody's security — least of all Apple's. A way for an unfunded,
+open-source, individually maintained project to have its builds notarized would
+close that gap, whether or not the person maintaining it can pay 99 dollars a
+year from where they happen to live.
+
+The source is here in full, the build is reproducible from it with one `make`,
+and I am happy to be identified and checked. If anyone at Apple reads this and
+can point me anywhere, please open an issue on this repository.
+
 ## Licence
 
 MIT, see [LICENSE](LICENSE) and [NOTICE.md](NOTICE.md).
