@@ -4,11 +4,18 @@ import AVFoundation
 /// Everything drawn on one thumbnail besides the capture itself.
 struct ThumbnailAppearance: Equatable {
     var name: String?
+    var namePosition: OverlayPosition = .bottom
     var system: String?
+    var systemPosition: OverlayPosition = .top
     var alert: String?
     var labelColor: RGBAColor
+    var systemColor: RGBAColor = .label
+    var fontSize: Double = 12
+    /// A plate behind the labels, for a thumbnail of a bright scene.
+    var labelBackground: RGBAColor?
     var border: RGBAColor
     var borderWidth: Double
+    var borderStyle: BorderStyle = .solid
 }
 
 /// The contents of one thumbnail: the live capture, a border, the character
@@ -19,9 +26,13 @@ final class ThumbnailView: NSView {
     var onActivate: (() -> Void)?
     var onMoved: ((CGPoint) -> Void)?
     var onMoveEnded: (() -> Void)?
+    /// Asked where a dragged thumbnail should actually land, so it can line up
+    /// with its neighbours.
+    var snapping: ((CGRect) -> CGPoint)?
     var isDraggable = true
 
     private let captureLayer: CALayer
+    private let borderLayer = CAShapeLayer()
     private let nameLayer = CATextLayer()
     private let systemLayer = CATextLayer()
     private let alertLayer = CATextLayer()
@@ -30,7 +41,6 @@ final class ThumbnailView: NSView {
     private var shown: ThumbnailAppearance?
 
     private static let dragThreshold: CGFloat = 3
-    private static let lineHeight: CGFloat = 16
 
     init(captureLayer: CALayer) {
         self.captureLayer = captureLayer
@@ -41,8 +51,10 @@ final class ThumbnailView: NSView {
         layer?.backgroundColor = CGColor(gray: 0, alpha: 1)
         layer?.addSublayer(captureLayer)
 
+        borderLayer.fillColor = nil
+        layer?.addSublayer(borderLayer)
+
         for label in [nameLayer, systemLayer, alertLayer] {
-            label.fontSize = 12
             label.alignmentMode = .center
             label.truncationMode = .end
             label.shadowColor = CGColor(gray: 0, alpha: 1)
@@ -72,13 +84,24 @@ final class ThumbnailView: NSView {
 
         systemLayer.string = appearance.system
         systemLayer.isHidden = appearance.system == nil
-        systemLayer.foregroundColor = appearance.labelColor.cgColor
+        systemLayer.foregroundColor = appearance.systemColor.cgColor
 
         alertLayer.string = appearance.alert
         alertLayer.isHidden = appearance.alert == nil
 
-        layer?.borderColor = appearance.border.cgColor
-        layer?.borderWidth = appearance.borderWidth
+        for label in [nameLayer, systemLayer] {
+            label.fontSize = appearance.fontSize
+            label.backgroundColor = appearance.labelBackground?.cgColor
+        }
+        alertLayer.fontSize = appearance.fontSize
+
+        // The stroke sits on the boundary, so half of it falls outside a clipped
+        // layer; doubling the width leaves the asked-for thickness visible.
+        borderLayer.strokeColor = appearance.border.cgColor
+        borderLayer.lineWidth = appearance.borderWidth * 2
+        borderLayer.lineDashPattern = appearance.borderStyle.dashPattern(width: appearance.borderWidth)
+        borderLayer.isHidden = appearance.borderWidth <= 0
+
         layoutLayers()
     }
 
@@ -91,23 +114,41 @@ final class ThumbnailView: NSView {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
 
-        let inset = layer?.borderWidth ?? 0
+        let appearance = shown
+        let inset = appearance?.borderWidth ?? 0
         let scale = window?.backingScaleFactor ?? 2
+        let lineHeight = ((appearance?.fontSize ?? 12) * 1.4).rounded()
         let width = bounds.width - inset * 2
 
         captureLayer.frame = bounds.insetBy(dx: inset, dy: inset)
         captureLayer.contentsScale = scale
 
+        borderLayer.frame = bounds
+        borderLayer.path = CGPath(rect: bounds, transform: nil)
+
         for label in [nameLayer, systemLayer, alertLayer] {
             label.contentsScale = scale
         }
-        systemLayer.frame = CGRect(x: inset, y: inset + 2, width: width, height: Self.lineHeight)
-        nameLayer.frame = CGRect(x: inset, y: bounds.height - inset - Self.lineHeight - 2,
-                                 width: width, height: Self.lineHeight)
-        alertLayer.frame = CGRect(x: inset, y: (bounds.height - Self.lineHeight * 1.5) / 2,
-                                  width: width, height: Self.lineHeight * 1.5)
+        nameLayer.frame = row(at: appearance?.namePosition ?? .bottom,
+                              inset: inset, width: width, height: lineHeight)
+        systemLayer.frame = row(at: appearance?.systemPosition ?? .top,
+                                inset: inset, width: width, height: lineHeight)
+        alertLayer.frame = CGRect(x: inset, y: (bounds.height - lineHeight * 1.5) / 2,
+                                  width: width, height: lineHeight * 1.5)
+
+        // Both labels asked for the same edge; one steps aside.
+        if !nameLayer.isHidden, !systemLayer.isHidden,
+           appearance?.namePosition == appearance?.systemPosition {
+            nameLayer.frame.origin.y += appearance?.namePosition == .top ? lineHeight : -lineHeight
+        }
 
         CATransaction.commit()
+    }
+
+    private func row(at position: OverlayPosition, inset: CGFloat,
+                     width: CGFloat, height: CGFloat) -> CGRect {
+        let y = position == .top ? inset + 2 : bounds.height - inset - height - 2
+        return CGRect(x: inset, y: y, width: width, height: height)
     }
 
     override func resetCursorRects() {
@@ -127,8 +168,10 @@ final class ThumbnailView: NSView {
 
         didDrag = true
         dragOrigin = location
-        window.setFrameOrigin(CGPoint(x: window.frame.origin.x + delta.x,
-                                      y: window.frame.origin.y + delta.y))
+        let moved = CGRect(origin: CGPoint(x: window.frame.origin.x + delta.x,
+                                           y: window.frame.origin.y + delta.y),
+                           size: window.frame.size)
+        window.setFrameOrigin(snapping?(moved) ?? moved.origin)
         onMoved?(window.frame.origin)
     }
 

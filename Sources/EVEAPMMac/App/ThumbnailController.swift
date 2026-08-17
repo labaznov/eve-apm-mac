@@ -95,11 +95,17 @@ final class ThumbnailController {
         let character = client.character
         return ThumbnailAppearance(
             name: settings.showCharacterName ? client.label : nil,
+            namePosition: settings.characterNamePosition,
             system: settings.showSystemName ? character.flatMap { logs.systems[$0] } : nil,
+            systemPosition: settings.systemNamePosition,
             alert: character.flatMap { alerts[$0] }?.text,
             labelColor: settings.labelColor,
+            systemColor: settings.systemNameColor,
+            fontSize: settings.labelFontSize,
+            labelBackground: settings.overlayBackground ? settings.overlayBackgroundColor : nil,
             border: settings.borderColor(for: client, isActive: isActive),
-            borderWidth: settings.borderWidth)
+            borderWidth: settings.borderWidth(isActive: isActive),
+            borderStyle: settings.borderStyle(isActive: isActive))
     }
 
     // MARK: - Commands
@@ -120,6 +126,33 @@ final class ThumbnailController {
         let next = current.map { forward ? ($0 + 1) % clients.count
                                          : ($0 - 1 + clients.count) % clients.count } ?? 0
         activate(clients[next])
+    }
+
+    /// Steps through one named group rather than every client. A group is a
+    /// list of characters the user wrote down, so it is walked in that order,
+    /// skipping the ones that are not running.
+    func cycleGroup(named name: String, forward: Bool) {
+        guard let group = settings.group(named: name) else {
+            Log.error("no cycle group named \(name)")
+            return
+        }
+
+        var members = group.characters.filter { character in
+            registry.clients.contains { $0.character == character }
+        }
+        if group.includesNotLoggedIn {
+            members += registry.clients.filter { $0.character == nil }.map(\.label)
+        }
+
+        let current = registry.clients.first { $0.pid == frontmostPID }?.label
+        guard let target = CycleOrder.next(in: members, from: current,
+                                           forward: forward, loops: group.loops),
+              let client = registry.clients.first(where: { $0.label == target }) else {
+            Log.info("group \(name): nothing to step to from \(current ?? "nothing") in \(members)")
+            return
+        }
+        Log.info("group \(name): \(current ?? "nothing") -> \(target)")
+        activate(client)
     }
 
     /// True when every running capture has gone quiet, which is what a wedged
@@ -181,6 +214,11 @@ final class ThumbnailController {
             remember(origin, of: thumbnail.client)
         }
         view.onMoveEnded = { [weak self] in self?.config.flush() }
+        view.snapping = { [weak self] frame in
+            guard let self else { return frame.origin }
+            return Snapping.snap(frame, to: snapTargets(excluding: id),
+                                 within: settings.snapDistance)
+        }
         stream.onFailure = { [weak self] in
             Task { @MainActor in self?.restart(id) }
         }
@@ -243,7 +281,7 @@ final class ThumbnailController {
     /// out from under the pointer.
     private func layout(_ id: CGWindowID) {
         guard var thumbnail = thumbnails[id] else { return }
-        let width = settings.thumbnailWidth
+        let width = settings.thumbnailWidth(for: thumbnail.client)
         let height = (width / thumbnail.client.aspectRatio).rounded()
         let panel = thumbnail.panel
         let size = CGSize(width: width, height: height)
@@ -314,6 +352,13 @@ final class ThumbnailController {
         guard settings.positions[character] != stored else { return }
         settings.positions[character] = stored
         config.settings.positions[character] = stored
+    }
+
+    /// What a dragged thumbnail lines up against: its neighbours and the usable
+    /// area of every display.
+    private func snapTargets(excluding id: CGWindowID) -> [CGRect] {
+        thumbnails.filter { $0.key != id && $0.value.panel.isVisible }.map(\.value.panel.frame)
+            + NSScreen.screens.map(\.visibleFrame)
     }
 
     /// Re-checks every thumbnail against the displays, for when a monitor is

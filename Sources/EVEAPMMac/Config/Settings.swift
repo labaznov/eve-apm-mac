@@ -28,6 +28,45 @@ struct StoredPoint: Codable, Sendable, Equatable {
     var cgPoint: CGPoint { CGPoint(x: x, y: y) }
 }
 
+/// Where an overlay sits on a thumbnail.
+enum OverlayPosition: String, Codable, Sendable, Equatable, CaseIterable {
+    case top
+    case bottom
+
+    var title: String { self == .top ? "Top" : "Bottom" }
+}
+
+/// How a thumbnail's border is drawn.
+enum BorderStyle: String, Codable, Sendable, Equatable, CaseIterable {
+    case solid
+    case dashed
+    case dotted
+
+    var title: String { rawValue.capitalized }
+
+    /// The dash pattern a shape layer wants, in points; nil draws a line.
+    func dashPattern(width: Double) -> [NSNumber]? {
+        switch self {
+        case .solid: nil
+        case .dashed: [NSNumber(value: width * 3), NSNumber(value: width * 2)]
+        case .dotted: [NSNumber(value: max(1, width)), NSNumber(value: max(1, width) * 2)]
+        }
+    }
+}
+
+/// A named set of characters with shortcuts that step through just them, for
+/// the squads a multiboxer switches between as a unit.
+struct CycleGroup: Codable, Sendable, Equatable, Hashable, Identifiable {
+    var name: String
+    var characters: [String] = []
+    /// Whether clients still on the login screen take part.
+    var includesNotLoggedIn: Bool = false
+    /// Whether stepping past the last member returns to the first.
+    var loops: Bool = true
+
+    var id: String { name }
+}
+
 /// What a global hotkey does when it fires.
 enum HotkeyAction: Codable, Sendable, Equatable, Hashable {
     case activate(character: String)
@@ -38,6 +77,8 @@ enum HotkeyAction: Codable, Sendable, Equatable, Hashable {
     case switchProfile(name: String)
     case cycleProfileForward
     case cycleProfileBackward
+    case cycleGroupForward(group: String)
+    case cycleGroupBackward(group: String)
 
     /// Profile switching has to keep working after the profile changes, so
     /// those shortcuts are held outside any profile.
@@ -52,11 +93,30 @@ enum HotkeyAction: Codable, Sendable, Equatable, Hashable {
 /// A global hotkey as the Carbon hotkey API wants it: a virtual key code and a
 /// Carbon modifier mask.
 struct Hotkey: Codable, Sendable, Equatable, Hashable, Identifiable {
+    /// Identity of its own, because a shortcut is edited in place: two rows can
+    /// hold the same keys, or none yet, and a list keyed on their contents would
+    /// confuse one for the other while they are being recorded.
+    var id: UUID
     var keyCode: UInt32
     var modifiers: UInt32
     var action: HotkeyAction
 
-    var id: String { "\(modifiers)-\(keyCode)" }
+    init(id: UUID = UUID(), keyCode: UInt32, modifiers: UInt32, action: HotkeyAction) {
+        self.id = id
+        self.keyCode = keyCode
+        self.modifiers = modifiers
+        self.action = action
+    }
+
+    /// Files written before shortcuts carried an identity are still read; those
+    /// entries are given one as they come in.
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        id = try values.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        keyCode = try values.decode(UInt32.self, forKey: .keyCode)
+        modifiers = try values.decode(UInt32.self, forKey: .modifiers)
+        action = try values.decode(HotkeyAction.self, forKey: .action)
+    }
 }
 
 /// Everything the user can change, as it is written to disk.
@@ -79,6 +139,25 @@ struct Settings: Codable, Sendable, Equatable {
     var positions: [String: StoredPoint] = [:]
     var hotkeys: [Hotkey] = []
     var hotkeysRequireEVEFocus: Bool = true
+    /// Fire a shortcut even when further modifiers are held, so a key the game
+    /// also uses with Ctrl or Alt still reaches this app.
+    var wildcardHotkeys: Bool = false
+    var cycleGroups: [CycleGroup] = []
+
+    /// A width of its own for named characters; the rest use `thumbnailWidth`.
+    var characterThumbnailWidths: [String: Double] = [:]
+    /// How near an edge a dragged thumbnail snaps to it. Zero switches it off.
+    var snapDistance: Double = 8
+
+    var labelFontSize: Double = 12
+    var characterNamePosition: OverlayPosition = .bottom
+    var systemNamePosition: OverlayPosition = .top
+    var systemNameColor: RGBAColor = .label
+    var overlayBackground: Bool = false
+    var overlayBackgroundColor: RGBAColor = RGBAColor(red: 0, green: 0, blue: 0, alpha: 0.5)
+    var activeBorderStyle: BorderStyle = .solid
+    var inactiveBorderStyle: BorderStyle = .solid
+    var inactiveBorderWidth: Double = 2
 
     /// Bundle identifiers whose windows count as EVE clients. Kept editable
     /// because Singularity and third-party launchers ship their own bundles.
@@ -114,6 +193,13 @@ struct Settings: Codable, Sendable, Equatable {
         copy.autoMinimizeDelay = min(max(autoMinimizeDelay, 0.5), 120)
         copy.alertDuration = min(max(alertDuration, 1), 60)
         copy.positions = positions.filter { !Settings.isProcessKey($0.key) }
+        copy.inactiveBorderWidth = min(max(inactiveBorderWidth, 0), 12)
+        copy.snapDistance = min(max(snapDistance, 0), 60)
+        copy.labelFontSize = min(max(labelFontSize, 8), 32)
+        copy.characterThumbnailWidths = characterThumbnailWidths.mapValues {
+            min(max($0, Settings.thumbnailWidthRange.lowerBound),
+                Settings.thumbnailWidthRange.upperBound)
+        }
         return copy
     }
 
@@ -141,6 +227,22 @@ struct Settings: Codable, Sendable, Equatable {
         let configured = kind == .chat ? chatLogDirectory : gameLogDirectory
         guard !configured.isEmpty else { return Settings.defaultLogDirectory(kind) }
         return URL(fileURLWithPath: (configured as NSString).expandingTildeInPath, isDirectory: true)
+    }
+
+    func thumbnailWidth(for client: EVEClient) -> Double {
+        client.character.flatMap { characterThumbnailWidths[$0] } ?? thumbnailWidth
+    }
+
+    func borderStyle(isActive: Bool) -> BorderStyle {
+        isActive ? activeBorderStyle : inactiveBorderStyle
+    }
+
+    func borderWidth(isActive: Bool) -> Double {
+        isActive ? borderWidth : inactiveBorderWidth
+    }
+
+    func group(named name: String) -> CycleGroup? {
+        cycleGroups.first { $0.name == name }
     }
 
     func borderColor(for client: EVEClient, isActive: Bool) -> RGBAColor {

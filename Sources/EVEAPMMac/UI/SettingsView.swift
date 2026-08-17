@@ -12,7 +12,7 @@ struct SettingsView: View {
         VStack(spacing: 0) {
             PermissionsBanner()
             TabView {
-                ThumbnailSettings(settings: $config.settings)
+                ThumbnailSettings(settings: $config.settings, characters: characters)
                     .tabItem { Label("Thumbnails", systemImage: "rectangle.on.rectangle") }
                 BehaviourSettings(settings: $config.settings, characters: characters)
                     .tabItem { Label("Behaviour", systemImage: "gearshape") }
@@ -23,6 +23,8 @@ struct SettingsView: View {
                     .tabItem { Label("Hotkeys", systemImage: "keyboard") }
                 LogSettings(settings: $config.settings, systems: logs.systems)
                     .tabItem { Label("Logs", systemImage: "doc.text.magnifyingglass") }
+                GroupSettings(settings: $config.settings, characters: characters)
+                    .tabItem { Label("Groups", systemImage: "square.stack.3d.up") }
                 ProfileSettings(config: config)
                     .tabItem { Label("Profiles", systemImage: "person.2") }
                 ClientList(clients: registry.clients, frontmost: registry.frontmostPID)
@@ -71,6 +73,7 @@ private struct PermissionsBanner: View {
 
 private struct ThumbnailSettings: View {
     @Binding var settings: Settings
+    let characters: [String]
 
     var body: some View {
         Form {
@@ -87,6 +90,26 @@ private struct ThumbnailSettings: View {
                         Slider(value: $settings.opacity, in: Settings.opacityRange, step: 0.05)
                         Text(settings.opacity, format: .percent.precision(.fractionLength(0)))
                             .monospacedDigit().frame(width: 60)
+                    }
+                }
+                Section("A width of their own") {
+                    if characters.isEmpty {
+                        Text("No clients detected").foregroundStyle(.secondary)
+                    }
+                    ForEach(characters, id: \.self) { character in
+                        LabeledContent(character) {
+                            HStack {
+                                Slider(value: Binding(
+                                    get: { settings.characterThumbnailWidths[character]
+                                            ?? settings.thumbnailWidth },
+                                    set: { settings.characterThumbnailWidths[character] = $0 }
+                                ), in: Settings.thumbnailWidthRange, step: 10)
+                                Button("Reset") {
+                                    settings.characterThumbnailWidths[character] = nil
+                                }
+                                .disabled(settings.characterThumbnailWidths[character] == nil)
+                            }
+                        }
                     }
                 }
                 LabeledContent("Frame rate") {
@@ -107,15 +130,54 @@ private struct ThumbnailSettings: View {
                 Toggle("Show character names", isOn: $settings.showCharacterName)
             }
 
+            Section("Arranging") {
+                LabeledContent("Snap to neighbours") {
+                    HStack {
+                        Slider(value: $settings.snapDistance, in: 0...30, step: 1)
+                        Text(settings.snapDistance == 0 ? "off" : "\(Int(settings.snapDistance)) pt")
+                            .monospacedDigit().frame(width: 50)
+                    }
+                }
+            }
+
+            Section("Overlays") {
+                LabeledContent("Text size") {
+                    Stepper(value: $settings.labelFontSize, in: 8...32, step: 1) {
+                        Text("\(Int(settings.labelFontSize)) pt").monospacedDigit()
+                    }
+                }
+                Picker("Character name at", selection: $settings.characterNamePosition) {
+                    ForEach(OverlayPosition.allCases, id: \.self) { Text($0.title).tag($0) }
+                }
+                Picker("System name at", selection: $settings.systemNamePosition) {
+                    ForEach(OverlayPosition.allCases, id: \.self) { Text($0.title).tag($0) }
+                }
+                ColorPicker("Character name", selection: colorBinding(\.labelColor))
+                ColorPicker("System name", selection: colorBinding(\.systemNameColor))
+                Toggle("Plate behind the text", isOn: $settings.overlayBackground)
+                ColorPicker("Plate", selection: colorBinding(\.overlayBackgroundColor))
+                    .disabled(!settings.overlayBackground)
+            }
+
             Section("Border") {
-                LabeledContent("Width") {
+                LabeledContent("Active width") {
                     Stepper(value: $settings.borderWidth, in: 0...12, step: 1) {
                         Text("\(Int(settings.borderWidth)) pt").monospacedDigit()
                     }
                 }
+                Picker("Active style", selection: $settings.activeBorderStyle) {
+                    ForEach(BorderStyle.allCases, id: \.self) { Text($0.title).tag($0) }
+                }
                 ColorPicker("Active client", selection: colorBinding(\.activeBorderColor))
+                LabeledContent("Inactive width") {
+                    Stepper(value: $settings.inactiveBorderWidth, in: 0...12, step: 1) {
+                        Text("\(Int(settings.inactiveBorderWidth)) pt").monospacedDigit()
+                    }
+                }
+                Picker("Inactive style", selection: $settings.inactiveBorderStyle) {
+                    ForEach(BorderStyle.allCases, id: \.self) { Text($0.title).tag($0) }
+                }
                 ColorPicker("Inactive client", selection: colorBinding(\.inactiveBorderColor))
-                ColorPicker("Character name", selection: colorBinding(\.labelColor))
             }
         }
         .formStyle(.grouped)
@@ -195,6 +257,8 @@ private struct HotkeySettings: View {
         VStack(alignment: .leading, spacing: 8) {
             Toggle("Only while an EVE client is in front", isOn: $settings.hotkeysRequireEVEFocus)
                 .help("Leaves the keys to whatever other application you are using")
+            Toggle("Fire even with further modifiers held", isOn: $settings.wildcardHotkeys)
+                .help("A shortcut on 1 also answers to ⌃1, ⌥1 and the rest, for keys the game uses too")
 
             Text("Shortcuts of this profile")
                 .font(.headline)
@@ -210,6 +274,17 @@ private struct HotkeySettings: View {
                     Button("Cycle backward") { add(.cycleBackward) }
                     Button("Toggle thumbnails") { add(.toggleThumbnails) }
                     Button("Suspend or resume hotkeys") { add(.toggleHotkeys) }
+                    if !settings.cycleGroups.isEmpty {
+                        Divider()
+                        ForEach(settings.cycleGroups) { group in
+                            Button("Next in \(group.name)") {
+                                add(.cycleGroupForward(group: group.name))
+                            }
+                            Button("Previous in \(group.name)") {
+                                add(.cycleGroupBackward(group: group.name))
+                            }
+                        }
+                    }
                     Divider()
                     Button("Next profile") { add(.cycleProfileForward) }
                     Button("Previous profile") { add(.cycleProfileBackward) }
@@ -278,6 +353,8 @@ private struct HotkeySettings: View {
         case .switchProfile(let name): "Switch to profile \(name)"
         case .cycleProfileForward: "Next profile"
         case .cycleProfileBackward: "Previous profile"
+        case .cycleGroupForward(let group): "Next in group \(group)"
+        case .cycleGroupBackward(let group): "Previous in group \(group)"
         }
     }
 }
@@ -417,5 +494,108 @@ private struct ProfileSettings: View {
             }
         }
         .padding(8)
+    }
+}
+
+/// Cycle groups: the squads a multiboxer steps through as a unit. A group holds
+/// names rather than clients, so it survives a character being logged out.
+private struct GroupSettings: View {
+    @Binding var settings: Settings
+    let characters: [String]
+    @State private var newName = ""
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("A group is a list of characters in the order you want to walk them. Give it a pair of shortcuts in the Hotkeys tab and they step through that group alone.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+
+            if settings.cycleGroups.isEmpty {
+                Text("No groups yet").foregroundStyle(.secondary)
+            }
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    ForEach($settings.cycleGroups) { $group in
+                        GroupEditor(group: $group, characters: characters) {
+                            settings.cycleGroups.removeAll { $0.name == group.name }
+                        }
+                    }
+                }
+            }
+
+            HStack {
+                TextField("New group", text: $newName)
+                    .frame(width: 160)
+                Button("Add") {
+                    let name = newName.trimmingCharacters(in: .whitespaces)
+                    if !name.isEmpty, !settings.cycleGroups.contains(where: { $0.name == name }) {
+                        settings.cycleGroups.append(CycleGroup(name: name))
+                    }
+                    newName = ""
+                }
+                .disabled(newName.trimmingCharacters(in: .whitespaces).isEmpty)
+                Spacer()
+            }
+        }
+        .padding(8)
+    }
+}
+
+private struct GroupEditor: View {
+    @Binding var group: CycleGroup
+    let characters: [String]
+    let onRemove: () -> Void
+
+    /// Characters the app can see, plus the ones the group names that are not
+    /// running just now, so a group outlives a logged-out character.
+    private var choices: [String] {
+        characters + group.characters.filter { !characters.contains($0) }
+    }
+
+    var body: some View {
+        GroupBox(group.name) {
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach(choices, id: \.self) { character in
+                    HStack {
+                        Toggle(character, isOn: Binding(
+                            get: { group.characters.contains(character) },
+                            set: { member in
+                                if member {
+                                    if !group.characters.contains(character) {
+                                        group.characters.append(character)
+                                    }
+                                } else {
+                                    group.characters.removeAll { $0 == character }
+                                }
+                            }
+                        ))
+                        Spacer()
+                        if let index = group.characters.firstIndex(of: character) {
+                            Text("\(index + 1)").font(.caption).foregroundStyle(.secondary)
+                            Button("↑") { move(character, by: -1) }.disabled(index == 0)
+                            Button("↓") { move(character, by: 1) }
+                                .disabled(index == group.characters.count - 1)
+                        }
+                    }
+                }
+
+                Divider()
+                Toggle("Include clients not logged in", isOn: $group.includesNotLoggedIn)
+                Toggle("Wrap round at the ends", isOn: $group.loops)
+                HStack {
+                    Spacer()
+                    Button("Remove group", role: .destructive, action: onRemove)
+                }
+            }
+            .padding(4)
+        }
+    }
+
+    private func move(_ character: String, by offset: Int) {
+        guard let index = group.characters.firstIndex(of: character) else { return }
+        let target = index + offset
+        guard target >= 0, target < group.characters.count else { return }
+        group.characters.swapAt(index, target)
     }
 }

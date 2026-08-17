@@ -36,6 +36,7 @@ final class AppModel: ObservableObject {
                                   config.$settings.map(\.hotkeysRequireEVEFocus))
             .removeDuplicates { $0 == $1 }
             .sink { [weak self] hotkeys, global, _ in
+                self?.hotkeys.allowsExtraModifiers = self?.config.settings.wildcardHotkeys ?? false
                 self?.configuredHotkeys = hotkeys + global
                 self?.refreshHotkeyRegistration()
             }
@@ -66,6 +67,8 @@ final class AppModel: ObservableObject {
         case .switchProfile(let name): config.switchTo(name)
         case .cycleProfileForward: config.cycleProfile(forward: true)
         case .cycleProfileBackward: config.cycleProfile(forward: false)
+        case .cycleGroupForward(let group): controller.cycleGroup(named: group, forward: true)
+        case .cycleGroupBackward(let group): controller.cycleGroup(named: group, forward: false)
         }
     }
 

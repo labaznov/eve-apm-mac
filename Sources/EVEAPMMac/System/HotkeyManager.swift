@@ -9,6 +9,9 @@ final class HotkeyManager {
     nonisolated static let signature: OSType = 0x4556_4150 // 'EVAP'
 
     var onAction: ((HotkeyAction) -> Void)?
+    /// Also claim the shortcut with further modifiers held, so a key the game
+    /// uses with Ctrl or Alt still reaches this app.
+    var allowsExtraModifiers = false
     private(set) var isSuspended = false
 
     private var registered: [UInt32: (ref: EventHotKeyRef, action: HotkeyAction)] = [:]
@@ -39,18 +42,49 @@ final class HotkeyManager {
     }
 
     private func register(_ hotkey: Hotkey) {
+        for modifiers in variants(of: hotkey.modifiers) {
+            claim(keyCode: hotkey.keyCode, modifiers: modifiers, action: hotkey.action,
+                  reportFailure: modifiers == hotkey.modifiers)
+        }
+    }
+
+    /// The combination as configured, plus the ones with extra modifiers when
+    /// the wildcard setting is on.
+    private func variants(of modifiers: UInt32) -> [UInt32] {
+        guard allowsExtraModifiers else { return [modifiers] }
+        let extras: [UInt32] = [UInt32(cmdKey), UInt32(optionKey),
+                                UInt32(controlKey), UInt32(shiftKey)]
+            .filter { modifiers & $0 == 0 }
+
+        var combinations: [UInt32] = [modifiers]
+        for mask in 1..<(1 << extras.count) {
+            var combined = modifiers
+            for (index, extra) in extras.enumerated() where mask & (1 << index) != 0 {
+                combined |= extra
+            }
+            combinations.append(combined)
+        }
+        return combinations
+    }
+
+    /// A wildcard variant often collides with a shortcut another application
+    /// already holds, which is expected rather than an error worth reporting.
+    private func claim(keyCode: UInt32, modifiers: UInt32, action: HotkeyAction,
+                       reportFailure: Bool) {
         let id = nextID
         nextID += 1
 
         var ref: EventHotKeyRef?
         let hotKeyID = EventHotKeyID(signature: HotkeyManager.signature, id: id)
-        let status = RegisterEventHotKey(hotkey.keyCode, hotkey.modifiers, hotKeyID,
+        let status = RegisterEventHotKey(keyCode, modifiers, hotKeyID,
                                          GetEventDispatcherTarget(), 0, &ref)
         guard status == noErr, let ref else {
-            Log.error("cannot register hotkey \(KeyCombo.description(keyCode: hotkey.keyCode, modifiers: hotkey.modifiers)): OSStatus \(status)")
+            if reportFailure {
+                Log.error("cannot register hotkey \(KeyCombo.description(keyCode: keyCode, modifiers: modifiers)): OSStatus \(status)")
+            }
             return
         }
-        registered[id] = (ref, hotkey.action)
+        registered[id] = (ref, action)
     }
 
     private func unregisterAll() {
