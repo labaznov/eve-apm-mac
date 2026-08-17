@@ -63,6 +63,13 @@ from a release still needs Gatekeeper's permission once, because it is not
 notarized. Notarizing needs a paid Developer ID, which this project does not
 have.
 
+To allow a downloaded build on macOS 15 or newer: open it, let macOS refuse,
+then go to **System Settings → Privacy & Security**, find the app under
+*Security* near the bottom and press **Open Anyway**. Control-clicking the app
+and choosing *Open* no longer works — Apple removed that in macOS Sequoia — and
+the *Open Anyway* button only appears for about an hour after the refused
+launch, so open the app again if it is not there.
+
 ## Features
 
 **Windows**
