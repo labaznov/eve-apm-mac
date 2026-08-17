@@ -60,16 +60,28 @@ stops asking; plain *Allow* only covers that one build.
 - Drag to arrange; positions are remembered per character and can be locked
 - Optional auto-minimise of inactive clients, with a delay and a never-minimise
   list
-- Border highlight on the active client, custom border colour per character
+- Border highlight on the active client, custom border colour per character,
+  and a width and style — solid, dashed or dotted — of its own for active and
+  inactive
 - Optional hiding of the active client's own thumbnail
-- Adjustable width, opacity and frame rate
+- Adjustable width, opacity and frame rate, and a width of its own for a named
+  character
+- Thumbnails snap to each other and to the edges of the screen as you drag them
+- Overlay text size, which edge the character and system names sit on, their
+  colours, and an optional plate behind them
 
 **Hotkeys**
 - Global shortcuts to switch to a named character, cycle forward or backward,
-  toggle the thumbnails, or suspend the hotkeys themselves
+  toggle the thumbnails, or suspend the hotkeys themselves; a character can
+  carry several
+- **Cycle groups**: named squads with a pair of shortcuts that step through that
+  group alone, in the order you put them in, skipping members that are logged
+  out
 - Restricted to EVE by default: while another application is in front the
   shortcuts are unregistered, so even a bare arrow key reaches that application
   untouched
+- Optional wildcard mode, where a shortcut answers with further modifiers held
+  too, for keys the game itself uses
 
 **Logs**
 - The solar system each character sits in, shown on its thumbnail, read from the
@@ -103,8 +115,11 @@ active file in Finder.
 Profiles are plain JSON in
 `~/Library/Application Support/EVE-APM-Mac/profiles/<name>.json`, with the
 chosen profile and the profile-switching shortcuts in `state.json` beside them.
-Anything absent from a file falls back to its default, and values outside their
-range are pulled back into it when read.
+A file is read field by field: anything absent falls back to its default, a
+field this build cannot read is left at its default and named in the log, and
+values outside their range are pulled back into it. A file that is not JSON at
+all is left untouched, copied beside itself as `<name>.broken.json`, and
+reported — a settings file is never quietly replaced.
 
 **Carrying settings with the app.** A `settings.json` placed *next to the app*
 wins over the one in Application Support. The app then works out of that folder:
@@ -117,8 +132,9 @@ coordinate space macOS uses for windows.
 
 - A position is written the instant a thumbnail moves and saved to disk as soon
   as you let go, so an arrangement is never lost to a crash or a forced quit.
-- A remembered position is used exactly as written, as long as the thumbnail
-  fits entirely on one of the displays attached right now.
+- A remembered position is used exactly as written, as long as most of the
+  thumbnail lands on a display attached right now. Over the Dock or the menu bar
+  is allowed, and so is hanging a little off an edge.
 - A position that lands off every display is dropped, the thumbnail is placed
   where it can be seen, and the new position is written back.
 - Plugging a display in or out re-checks every thumbnail by the same rule.

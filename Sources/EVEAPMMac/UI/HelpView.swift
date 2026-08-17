@@ -18,6 +18,7 @@ struct HelpView: View {
                 portable
                 fields
                 positions
+                groups
                 windows
                 links
             }
@@ -64,7 +65,7 @@ struct HelpView: View {
 
     private var fields: some View {
         section("What is in a profile") {
-            Text("Anything absent from the file falls back to its default, so a file with a single line is valid. Values outside their range are pulled back into it when read.")
+            Text("A file is read field by field. Anything absent falls back to its default, so a file with a single line is valid, and a file written by an older build keeps everything it does hold. A field this build cannot read — the wrong type, a hand-edit gone wrong — is left at its default and named in the log; the rest of the file is kept. A file that is not JSON at all is left untouched, copied beside itself as `<name>.broken.json`, and reported.")
             table([
                 ("thumbnailWidth", "80–800", "Width in points; the height follows the client's aspect"),
                 ("opacity", "0.2–1", "Thumbnail transparency"),
@@ -77,8 +78,18 @@ struct HelpView: View {
                 ("autoMinimizeEnabled / autoMinimizeDelay", "true / false, 0.5–120", "Minimising inactive clients"),
                 ("neverMinimize", "[\"Name\", …]", "Characters exempt from that"),
                 ("positions", "{\"Name\": {\"x\": …, \"y\": …}}", "Thumbnail corners, see below"),
-                ("hotkeys", "[{keyCode, modifiers, action}]", "Shortcuts of this profile"),
+                ("hotkeys", "[{id, keyCode, modifiers, action}]", "Shortcuts of this profile; a character may have several"),
                 ("hotkeysRequireEVEFocus", "true / false", "Shortcuts act only while EVE is in front"),
+                ("wildcardHotkeys", "true / false", "A shortcut answers with further modifiers held too"),
+                ("cycleGroups", "[{name, characters, includesNotLoggedIn, loops}]", "Named squads with shortcuts of their own"),
+                ("characterThumbnailWidths", "{\"Name\": 80–800}", "A width of its own for one character"),
+                ("snapDistance", "0–60", "How near an edge a dragged thumbnail snaps; 0 is off"),
+                ("labelFontSize", "8–32", "Size of the overlay text"),
+                ("characterNamePosition / systemNamePosition", "\"top\" / \"bottom\"", "Which edge each overlay sits on"),
+                ("systemNameColor", "{red, green, blue, alpha}", "Colour of the system name"),
+                ("overlayBackground / overlayBackgroundColor", "true / false, colour", "A plate behind the overlay text"),
+                ("activeBorderStyle / inactiveBorderStyle", "\"solid\" / \"dashed\" / \"dotted\"", "How each border is drawn"),
+                ("inactiveBorderWidth", "0–12", "Border thickness for inactive clients"),
                 ("clientBundleIdentifiers", "[\"com.ccpgames.eveonline\"]", "What counts as an EVE client"),
                 ("monitorChatLogs / monitorGameLogs", "true / false", "Reading EVE's logs"),
                 ("chatLogDirectory / gameLogDirectory", "path or \"\"", "Empty means where EVE writes them"),
@@ -93,8 +104,9 @@ struct HelpView: View {
             Text("A position is the bottom-left corner of the thumbnail, in the coordinate space macOS uses for windows: **x** grows to the right, **y** grows upwards from the bottom of the main display.")
             Text("The rules are strict on purpose:")
             bullet("A position is written the instant a thumbnail moves, and saved to disk as soon as you let go. An arrangement is never lost to a crash or a forced quit.")
-            bullet("A remembered position is used exactly as written, as long as the thumbnail fits entirely on one of the displays attached right now.")
+            bullet("A remembered position is used exactly as written, as long as most of the thumbnail lands on a display attached right now. Sitting over the Dock or the menu bar is allowed, and so is hanging a little off an edge.")
             bullet("A position that lands off every display — a monitor that is gone, or a file from a machine with a larger screen — is dropped, the thumbnail is placed where it can be seen, and the new position is written back.")
+            bullet("A dragged thumbnail lines up with its neighbours and the edges of the screen when it comes within the snapping distance, which the Thumbnails tab sets.")
             bullet("Plugging a display in or out re-checks every thumbnail by the same rule; the ones that still fit are left alone.")
         }
     }
@@ -104,6 +116,15 @@ struct HelpView: View {
             Text("EVE-APM Preview for Windows does not store JSON: it writes Qt INI files, one per profile, in a `profiles` folder next to its executable. The settings both applications share are translated for you by **Import a Windows profile…** above; pick a `.ini` and it becomes a profile here.")
             Text("What comes across: thumbnail width and opacity, always-on-top, locked positions, hiding the active thumbnail, the highlight colour, auto-minimise with its delay and exempt characters, the name and system overlays with the name colour, log monitoring, combat alerts with their duration, the EVE-focus rule for shortcuts, per-character border colours, and thumbnail positions.")
             Text("Positions are flipped as they are read, because Windows measures down from the top of the screen and macOS up from the bottom; the parked position Windows gives minimised windows is discarded. Shortcuts are not carried over: the two systems name keys differently, so they are worth setting again.")
+        }
+    }
+
+    private var groups: some View {
+        section("Cycle groups") {
+            Text("A group is a named list of characters in the order you want to walk them. Give it a pair of shortcuts and they step through that group alone, leaving every other client where it is. A group holds names, not clients, so a member that is logged out is simply skipped and the group survives.")
+            bullet("**Wrap round at the ends** decides whether stepping past the last member returns to the first or stops there.")
+            bullet("**Include clients not logged in** adds the clients still on the login screen to the walk.")
+            bullet("Starting from a client outside the group enters it at the first member.")
         }
     }
 
