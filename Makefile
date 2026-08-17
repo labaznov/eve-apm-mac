@@ -9,7 +9,8 @@ ARCHS    ?=
 VERSION  := $(shell /usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" Resources/Info.plist)
 ARCHIVE  := build/EVE-APM-Mac-$(VERSION)-universal.zip
 # A stable signature keeps the Screen Recording and Accessibility grants across
-# rebuilds; scripts/dev-identity.sh creates one. Falls back to ad-hoc signing.
+# builds and updates; scripts/signing-identity.sh creates one. Falls back to
+# ad-hoc signing, which works but is a new app to macOS every time.
 IDENTITY ?= $(shell security find-certificate -c "EVE-APM Mac Dev" >/dev/null 2>&1 && echo "EVE-APM Mac Dev" || echo -)
 
 .PHONY: all build bundle icon run test release clean
@@ -43,10 +44,16 @@ icon:
 test:
 	swift test
 
-# What is published: both architectures, and an ad-hoc signature so the download
-# carries nobody's private key. Anyone can reproduce it from this checkout.
+# What is published: both architectures, signed with the same identity as a
+# local build so an update keeps the permissions already granted. Ad-hoc has to
+# be asked for, because publishing one silently costs every user their grants.
 release:
-	$(MAKE) bundle CONFIG=release ARCHS="--arch arm64 --arch x86_64" IDENTITY=- BUNDLE_DIR=build/release
+ifeq ($(IDENTITY),-)
+ifneq ($(ALLOW_ADHOC),1)
+	$(error no signing identity: run ./scripts/signing-identity.sh, or pass ALLOW_ADHOC=1 to publish an ad-hoc build that resets everyone's permissions)
+endif
+endif
+	$(MAKE) bundle CONFIG=release ARCHS="--arch arm64 --arch x86_64" BUNDLE_DIR=build/release
 	rm -f "$(ARCHIVE)"
 	ditto -c -k --keepParent "build/release/$(APP).app" "$(ARCHIVE)"
 	@echo "packaged $(ARCHIVE)"

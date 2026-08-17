@@ -37,18 +37,31 @@ launch:
 Both live in System Settings → Privacy & Security. The Settings window shows a
 banner with a shortcut to the right pane while either is missing.
 
-macOS ties both grants to the signature of the app that asked for them, and an
-ad-hoc signature changes on every build — so every rebuild would lose them. Run
-this once to create a local self-signed identity, after which `make` picks it up
-automatically and the grants stick:
+macOS ties both grants to a code requirement, and for an ad-hoc signature that
+requirement names the hash of the binary — which changes on every build, so every
+rebuild and every update would lose them:
+
+```
+ad-hoc:      cdhash H"767079dd…" or cdhash H"a7b88c81…"      new each build
+certificate: identifier "…" and certificate leaf = H"2f2d…"  stable
+```
+
+Run this once to create a local self-signed identity, after which `make` and
+`scripts/release.sh` both pick it up and the grants stick across builds and
+updates:
 
 ```sh
-./scripts/dev-identity.sh
+./scripts/signing-identity.sh
 ```
 
 The first build after that asks for the login keychain password, because
 `codesign` has to reach the new private key. Answer with **Always Allow** and it
 stops asking; plain *Allow* only covers that one build.
+
+The certificate makes the signature *stable*, not *trusted*: a build downloaded
+from a release still needs Gatekeeper's permission once, because it is not
+notarized. Notarizing needs a paid Developer ID, which this project does not
+have.
 
 ## Features
 
@@ -185,6 +198,11 @@ It stamps the version into `Info.plist`, runs the tests, builds the universal
 app, tags the commit and uploads the archive. A published version is never
 rewritten: every build that reaches anyone gets a number of its own, so a report
 of "it happens on 0.2.1" means one exact binary.
+
+Releases are signed with the same identity as a local build, so an update is the
+same app to macOS and keeps the permissions already granted. Publishing an
+ad-hoc build would reset them for everyone, so `make release` refuses unless
+`ALLOW_ADHOC=1` says that is what you meant.
 
 ## Licence
 
